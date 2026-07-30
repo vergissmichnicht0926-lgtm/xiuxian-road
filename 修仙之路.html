@@ -361,7 +361,7 @@ async function aiCall(systemPrompt, userPrompt, timeout=30000, forceJson=true, r
       }
       const data = await res.json();
       let text = data.choices?.[0]?.message?.content || '';
-      text = extractJson(text);
+      if (forceJson) text = extractJson(text);
       return { text, raw:data };
     } catch(e) {
       lastError = e;
@@ -769,7 +769,7 @@ function resolveCombat(action, enemyPower, xpRange, stoneRange, enemyName) {
       const hpLoss = Math.floor((0.1 + Math.random()*0.15) * G.maxHp);
       G.xp += xpGain;
       G.stone += stoneGain;
-      G.hp = Math.max(1, G.hp - hpLoss);
+      G.hp = Math.max(0, G.hp - hpLoss);
       resultHTML = `
         <div class="ca-result">
           <div style="text-align:center;">
@@ -787,7 +787,7 @@ function resolveCombat(action, enemyPower, xpRange, stoneRange, enemyName) {
       // 落败但逃脱
       const hpLoss = Math.floor((0.2 + Math.random()*0.2) * G.maxHp);
       const stoneLoss = Math.floor(stoneRange[0] * (0.3 + Math.random()*0.4));
-      G.hp = Math.max(1, G.hp - hpLoss);
+      G.hp = Math.max(0, G.hp - hpLoss);
       G.stone = Math.max(0, G.stone - stoneLoss);
       G.statStoneSpent = (G.statStoneSpent||0) + stoneLoss;
       resultHTML = `
@@ -806,7 +806,7 @@ function resolveCombat(action, enemyPower, xpRange, stoneRange, enemyName) {
       // 惨败
       const hpLoss = Math.floor((0.35 + Math.random()*0.3) * G.maxHp);
       const stoneLoss = Math.floor(stoneRange[0] * (0.5 + Math.random()*0.5));
-      G.hp = Math.max(1, G.hp - hpLoss);
+      G.hp = Math.max(0, G.hp - hpLoss);
       G.stone = Math.max(0, G.stone - stoneLoss);
       G.statStoneSpent = (G.statStoneSpent||0) + stoneLoss;
       resultHTML = `
