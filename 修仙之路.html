@@ -1020,7 +1020,7 @@ async function doOuting() {
         `道号：${G.name}（${G.gender==='女'?'女修':'男修'}），当前境界：${realm().name}，年龄：${G.age}岁。`,
         30000, false
       );
-      G.backstory = (bsResp.text || '').trim().slice(0,150);
+      G.backstory = (bsResp.text || '').trim().slice(0,500);
       addLog('📜 身世之谜揭开一角……','gold');
     }
 
