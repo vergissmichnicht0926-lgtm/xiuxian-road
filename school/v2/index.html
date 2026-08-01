@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>校园恋之物语</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ==================== 标题画面 ==================== -->
+<div class="screen" id="titleScreen">
+  <div class="title-content">
+    <div class="title-sakura">🌸</div>
+    <h1 class="title-main">校园恋之物语</h1>
+    <p class="title-sub">— 每一次相遇，都是青春的礼物 —</p>
+
+    <!-- API配置区 -->
+    <div class="title-config">
+      <div class="config-header">🤖 AI 配置（必填）</div>
+      <input type="text" id="titleCfgURL" placeholder="API 地址" value="">
+      <input type="password" id="titleCfgKey" placeholder="API Key" value="">
+      <input type="text" id="titleCfgModel" placeholder="模型名称" value="deepseek-v4-flash">
+      <a href="https://platform.deepseek.com/api_keys" target="_blank" class="config-tutorial-link">
+        📖 DeepSeek API 获取教程（点击查看）
+      </a>
+    </div>
+
+    <div class="title-buttons">
+      <button class="title-btn primary" id="btnNewGame" disabled>✨ 新的故事</button>
+      <button class="title-btn" id="btnContinue" style="display:none;">📖 继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI加载动画 -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none;">
+  <div class="loading-content">
+    <div class="loading-sakura">🌸</div>
+    <div class="loading-spinner"></div>
+    <p class="loading-text" id="loadingText">正在生成相遇……</p>
+  </div>
+</div>
+
+<!-- ==================== 开局问卷 ==================== -->
+<div class="screen" id="questionnaireScreen" style="display:none;">
+  <div class="q-container">
+    <div class="q-header">
+      <div class="q-progress"><span id="qProgress">1/6</span></div>
+      <h2 class="q-title">🌸 转学前的小问卷</h2>
+      <p class="q-desc">放轻松～随便选就好啦</p>
+    </div>
+    <div class="q-body" id="qBody"></div>
+    <div class="q-footer">
+      <button class="q-btn" id="qPrev" style="display:none;">← 上一题</button>
+      <button class="q-btn primary" id="qNext">下一题 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 人设选择画面 ==================== -->
+<div class="screen" id="personaChoiceScreen" style="display:none;">
+  <div class="persona-choice-container">
+    <div class="persona-choice-header">
+      <div class="persona-choice-sakura">🌸</div>
+      <h2>最后一步——你的样子</h2>
+      <p class="persona-choice-desc">选择一种方式，决定你在校园里的形象～</p>
+    </div>
+    <div class="persona-choice-cards">
+      <button class="persona-card" id="btnAIPersona">
+        <div class="persona-card-icon">✨</div>
+        <div class="persona-card-title">AI 随机生成</div>
+        <div class="persona-card-desc">根据你刚才的问卷答案<br>AI为你量身打造一个人设</div>
+        <div class="persona-card-hint">省心 · 惊喜 · 可重新生成</div>
+      </button>
+      <button class="persona-card" id="btnCustomPersona">
+        <div class="persona-card-icon">✏️</div>
+        <div class="persona-card-title">自己动手捏</div>
+        <div class="persona-card-desc">按照提示填写外观、兴趣爱好<br>打造独一无二的自己</div>
+        <div class="persona-card-hint">自由 · 细致 · 完全掌控</div>
+      </button>
+    </div>
+    <div class="persona-choice-footer">
+      <button class="persona-skip-btn" id="btnSkipPersona">跳过，用默认人设 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI人设生成结果展示 -->
+<div class="screen" id="personaResultScreen" style="display:none;">
+  <div class="persona-result-container">
+    <div class="persona-result-header">
+      <div class="persona-result-sakura">✨</div>
+      <h2>AI 为你生成了人设</h2>
+      <p class="persona-result-desc">看看喜不喜欢？不喜欢可以重新生成～</p>
+    </div>
+    <div class="persona-result-card" id="personaResultCard">
+      <div class="persona-result-loading">⏳ AI正在构思你的形象……</div>
+    </div>
+    <div class="persona-result-actions">
+      <button class="persona-result-btn secondary" id="btnRegeneratePersona">🔄 重新生成</button>
+      <button class="persona-result-btn primary" id="btnAcceptPersona">✅ 就这个了！</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 自定义人设画面 ==================== -->
+<div class="screen" id="customizeScreen" style="display:none;">
+  <div class="customize-container">
+    <div class="customize-header">
+      <h2>✏️ 创造你的形象</h2>
+      <p class="customize-desc">放轻松～填多少算多少，空着也没关系</p>
+    </div>
+    <div class="customize-body" id="customizeBody">
+      <!-- 由JS动态生成 -->
+    </div>
+    <div class="customize-footer">
+      <button class="customize-btn secondary" id="btnCustomBack">← 返回选择</button>
+      <button class="customize-btn primary" id="btnCustomDone">🌸 完成！</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 主游戏界面 ==================== -->
+<div class="screen" id="gameScreen" style="display:none;">
+
+  <!-- 主页 -->
+  <div class="page active" id="pageHome">
+    <div class="home-top-bar" id="homeTopBar">
+      <span class="season-icon">🌸</span>
+      <span id="topDate">一年級·一学期·4月</span>
+    </div>
+    <div class="home-hud" id="homeHud">
+      <div class="hud-item">📊 <span id="hudGrade">50</span></div>
+      <div class="hud-item">💪 <span id="hudEnergy">80</span></div>
+      <div class="hud-item">😊 <span id="hudMood">60</span></div>
+      <div class="hud-item">💰 ¥<span id="hudMoney">500</span></div>
+    </div>
+    <div class="home-narrative" id="homeNarrative">
+      <p class="narr-text">🌸 新学期开始了……</p>
+    </div>
+    <div class="home-actions" id="homeActions">
+      <div class="actions-label" id="actionsLabel">这一周，你想做什么？</div>
+      <div class="actions-grid">
+        <button class="action-btn" data-action="study">📖 学习</button>
+        <button class="action-btn" data-action="club">🏃 部活</button>
+        <button class="action-btn" data-action="rest">🎮 休息</button>
+        <button class="action-btn" data-action="work">💼 打工</button>
+      </div>
+      <div class="actions-grid r18-actions" id="r18Actions" style="display:none;">
+        <button class="action-btn r18" data-action="seduce">💋 色诱</button>
+        <button class="action-btn r18" data-action="peep">👀 偷窥</button>
+        <button class="action-btn r18" data-action="expose">🍃 露出</button>
+        <button class="action-btn r18" data-action="masturbate">✋ 自慰</button>
+      </div>
+      <button class="action-btn special" data-action="invite" id="btnInviteAction" style="display:none;">💬 邀约</button>
+    </div>
+  </div>
+
+  <!-- 关系图页面 -->
+  <div class="page" id="pageNetwork">
+    <div class="network-header">
+      <span>🫧 人际网络</span>
+      <span class="network-hint">👆 点击泡泡查看详情</span>
+    </div>
+    <div class="bubble-canvas" id="bubbleCanvas">
+      <div class="bubble-center" id="bubbleCenter">
+        <span class="bubble-avatar">🎀</span>
+        <span class="bubble-name">我</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 角色页面 -->
+  <div class="page" id="pageCharacters">
+    <div class="char-tabs">
+      <button class="char-tab active" data-tab="important">✨ 重要的人</button>
+      <button class="char-tab" data-tab="all">👥 大家</button>
+    </div>
+    <div class="char-list" id="charList">
+      <p class="char-empty">还没有认识任何人呢……</p>
+    </div>
+  </div>
+
+  <!-- 回忆页面 -->
+  <div class="page" id="pageMemories">
+    <div class="mem-header">
+      <button class="mem-year-btn active" data-year="1">🌸 一年級</button>
+      <button class="mem-year-btn" data-year="2">🌻 二年級</button>
+      <button class="mem-year-btn" data-year="3">🍂 三年級</button>
+    </div>
+    <div class="mem-list" id="memList">
+      <p class="mem-empty">还没有任何回忆呢……</p>
+    </div>
+  </div>
+
+  <!-- 设置页面 -->
+  <div class="page" id="pageSettings">
+    <div class="settings-section">
+      <h3>🤖 AI 配置</h3>
+      <label>接口地址（OpenAI 兼容）</label>
+      <input type="text" id="cfgURL" placeholder="https://api.deepseek.com/v1/chat/completions">
+      <label>API Key</label>
+      <input type="password" id="cfgKey" placeholder="sk-...">
+      <label>模型名称</label>
+      <input type="text" id="cfgModel" placeholder="deepseek-v4-flash">
+      <button class="action-btn" style="margin-top:10px;width:100%;" onclick="saveSettings()">💾 保存配置</button>
+    </div>
+    <div class="settings-section">
+      <h3>💾 存档管理</h3>
+      <div class="btn-row">
+        <button onclick="quickSave()">💾 保存</button>
+        <button onclick="exportSave()">📤 导出</button>
+        <button onclick="importSave()">📥 导入</button>
+      </div>
+      <textarea id="saveDataIO" style="display:none;margin-top:8px;min-height:60px;font-size:0.75em;" readonly></textarea>
+      <div class="btn-row" id="saveIORow" style="display:none;">
+        <button onclick="hideSaveIO()">取消</button>
+        <button class="primary" id="saveIOAction"></button>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3>🔄 重新开始</h3>
+      <button class="danger" onclick="resetGame()">重新开始（需要确认）</button>
+    </div>
+    <div class="settings-section">
+      <p class="about-text">🌸 校园恋之物语 v1.0<br>日式校园 × AI叙事 × 人际泡泡图</p>
+    </div>
+  </div>
+
+  <!-- 底部导航栏 -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-page="home">🏠<span class="nav-label">主页</span></button>
+    <button class="nav-btn" data-page="network">🫧<span class="nav-label">关系图</span><span class="nav-badge" id="badgeNetwork" style="display:none;"></span></button>
+    <button class="nav-btn" data-page="memories">📖<span class="nav-label">回忆</span></button>
+    <button class="nav-btn" data-page="settings">⚙️<span class="nav-label">设置</span></button>
+  </nav>
+</div>
+
+<!-- ==================== 角色选择浮层（邀约） ==================== -->
+<div class="modal-overlay" id="charSelectModal" style="display:none;">
+  <div class="modal char-select-modal">
+    <button class="modal-close" onclick="closeCharSelectModal()">✕</button>
+    <h3 id="charSelectTitle">💬 选择和谁一起……</h3>
+    <div class="char-select-list" id="charSelectList"></div>
+  </div>
+</div>
+
+<!-- ==================== 角色详情浮层 ==================== -->
+<div class="modal-overlay" id="charModal" style="display:none;">
+  <div class="modal char-modal">
+    <button class="modal-close" onclick="closeCharModal()">✕</button>
+    <h3 id="charModalName">🌸 角色名</h3>
+    <div class="char-modal-body" id="charModalBody"></div>
+    <div class="char-modal-actions" id="charModalActions"></div>
+  </div>
+</div>
+
+<!-- ==================== 事件弹窗 ==================== -->
+<div class="modal-overlay" id="eventModal" style="display:none;">
+  <div class="modal event-modal">
+    <h3 id="eventModalTitle">🌸</h3>
+    <div class="event-narrative" id="eventNarrative"></div>
+    <div class="event-choices" id="eventChoices"></div>
+  </div>
+</div>
+
+<!-- ==================== 确认弹窗 ==================== -->
+<div class="modal-overlay" id="confirmModal" style="display:none;">
+  <div class="modal confirm-modal">
+    <p id="confirmText"></p>
+    <div class="btn-row">
+      <button onclick="closeConfirm()">取消</button>
+      <button class="primary" id="confirmAction">确认</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/time.js"></script>
+<script src="js/character.js"></script>
+<script src="js/event.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

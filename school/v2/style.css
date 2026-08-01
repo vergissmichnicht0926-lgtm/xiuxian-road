@@ -1,0 +1,634 @@
+/* ==================== 校园恋之物语 — 日系校园视觉 ==================== */
+:root {
+  --sakura: #f2a7b5;
+  --sakura-light: #fde8ed;
+  --sakura-dark: #d4788a;
+  --peach: #f5c2a0;
+  --peach-light: #fef0e8;
+  --lavender: #c4b5e0;
+  --lavender-light: #f0ebf8;
+  --sky: #a8d5e8;
+  --sky-light: #e8f4fa;
+  --green: #a8c9a0;
+  --green-light: #eaf5e6;
+  --gold: #e8c56d;
+  --gold-light: #fdf5e0;
+
+  --bg: #fefaf6;
+  --bg-card: #ffffff;
+  --text: #4a3f50;
+  --text-light: #8a7f90;
+  --text-lighter: #b0a5b8;
+  --border: #e8dfe8;
+  --shadow: 0 2px 12px rgba(180,160,180,0.15);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --nav-height: 64px;
+  --font: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%; overflow: hidden;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none; -webkit-user-select: none;
+}
+
+/* ==================== 通用屏幕 ==================== */
+.screen {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+/* ==================== 标题画面 ==================== */
+#titleScreen {
+  background: linear-gradient(160deg, #fef5f7 0%, #fdf0f3 30%, #fef8f4 60%, #f8f4fc 100%);
+  justify-content: center; align-items: center; overflow-y: auto;
+}
+.title-content {
+  text-align: center; animation: fadeInUp 0.8s ease;
+  max-width: 380px; width: 90%; padding: 20px 0;
+}
+.title-sakura { font-size: 56px; animation: float 3s ease-in-out infinite; }
+.title-main {
+  font-size: 2em; font-weight: 300; letter-spacing: 0.12em;
+  color: var(--sakura-dark); margin: 8px 0 4px;
+}
+.title-sub {
+  font-size: 0.9em; color: var(--text-light); margin-bottom: 20px;
+}
+
+/* 标题画面API配置 */
+.title-config {
+  background: var(--bg-card); border-radius: var(--radius);
+  padding: 16px; margin: 0 0 16px; text-align: left;
+  box-shadow: var(--shadow);
+}
+.config-header {
+  font-size: 0.9em; font-weight: 600; margin-bottom: 10px; color: var(--sakura-dark);
+}
+.title-config input {
+  width: 100%; padding: 10px 12px; margin: 4px 0; font-size: 0.85em;
+  font-family: var(--font); border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--bg); outline: none; transition: border 0.2s;
+}
+.title-config input:focus { border-color: var(--sakura); }
+.config-tutorial-link {
+  display: block; margin-top: 10px; text-align: center; font-size: 0.8em;
+  color: var(--sakura-dark); text-decoration: underline; cursor: pointer;
+}
+
+.title-buttons { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.title-btn {
+  width: 220px; padding: 13px 0; border: none; border-radius: 30px;
+  font-size: 1em; font-family: var(--font); cursor: pointer;
+  transition: all 0.2s; letter-spacing: 0.05em;
+}
+.title-btn.primary {
+  background: linear-gradient(135deg, var(--sakura), var(--peach));
+  color: #fff; box-shadow: 0 4px 16px rgba(242,167,181,0.4);
+}
+.title-btn.primary:disabled {
+  opacity: 0.4; cursor: not-allowed; box-shadow: none;
+}
+.title-btn:not(.primary) {
+  background: var(--bg-card); color: var(--text); border: 1.5px solid var(--border);
+}
+.title-btn:active:not(:disabled) { transform: scale(0.96); }
+
+/* ==================== 加载动画 ==================== */
+.loading-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(254,250,246,0.92);
+  display: flex; align-items: center; justify-content: center;
+}
+.loading-content { text-align: center; }
+.loading-sakura {
+  font-size: 48px; animation: float 1.5s ease-in-out infinite;
+}
+.loading-spinner {
+  width: 36px; height: 36px; margin: 16px auto;
+  border: 3px solid var(--sakura-light);
+  border-top-color: var(--sakura);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-text {
+  font-size: 0.9em; color: var(--text-light); margin-top: 8px;
+  animation: fadeInUp 0.4s ease;
+}
+
+/* ==================== 问卷 ==================== */
+#questionnaireScreen {
+  background: linear-gradient(160deg, #fef5f7, #fdf0f3, #fef8f4, #f8f4fc);
+}
+.q-container {
+  max-width: 480px; width: 90%; margin: auto; padding: 24px 0;
+  display: flex; flex-direction: column; height: 100%;
+}
+.q-header { text-align: center; padding: 16px 0; }
+.q-progress {
+  display: inline-block; background: var(--sakura-light); color: var(--sakura-dark);
+  padding: 4px 16px; border-radius: 20px; font-size: 0.85em; margin-bottom: 16px;
+}
+.q-title { font-size: 1.4em; font-weight: 400; color: var(--sakura-dark); }
+.q-desc { font-size: 0.9em; color: var(--text-light); margin-top: 4px; }
+.q-body { flex: 1; overflow-y: auto; padding: 16px 0; }
+.q-footer {
+  display: flex; justify-content: center; gap: 12px; padding: 16px 0;
+}
+.q-btn {
+  padding: 12px 36px; border: none; border-radius: 25px;
+  font-size: 1em; font-family: var(--font); cursor: pointer; transition: all 0.2s;
+  background: var(--bg-card); color: var(--text); border: 1.5px solid var(--border);
+}
+.q-btn.primary {
+  background: linear-gradient(135deg, var(--sakura), var(--peach));
+  color: #fff; border: none; box-shadow: 0 4px 12px rgba(242,167,181,0.35);
+}
+.q-btn:disabled { opacity: 0.4; pointer-events: none; }
+
+/* 问卷选项 */
+.q-option {
+  display: block; width: 100%; padding: 16px 20px; margin: 8px 0;
+  background: var(--bg-card); border: 2px solid var(--border); border-radius: var(--radius);
+  text-align: left; font-size: 1em; font-family: var(--font); cursor: pointer;
+  transition: all 0.2s; color: var(--text);
+}
+.q-option:hover, .q-option:active { border-color: var(--sakura); background: var(--sakura-light); }
+.q-option.selected { border-color: var(--sakura-dark); background: var(--sakura-light); }
+
+/* 问卷输入框 */
+.q-input {
+  width: 100%; padding: 14px 18px; font-size: 1.1em; font-family: var(--font);
+  border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg-card);
+  color: var(--text); text-align: center; outline: none; transition: border 0.2s;
+}
+.q-input:focus { border-color: var(--sakura); }
+
+.q-impact-hint {
+  font-size: 0.8em; color: var(--text-lighter); margin-top: 6px; text-align: center;
+}
+
+/* ==================== 底部导航 ==================== */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; height: var(--nav-height);
+  background: var(--bg-card); border-top: 1px solid var(--border);
+  display: flex; justify-content: space-around; align-items: center;
+  z-index: 100; padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.nav-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: none; font-size: 1.3em; cursor: pointer;
+  padding: 6px 12px; color: var(--text-lighter); transition: all 0.2s;
+  position: relative; font-family: var(--font);
+}
+.nav-btn .nav-label { font-size: 0.6em; }
+.nav-btn.active { color: var(--sakura-dark); }
+.nav-badge {
+  position: absolute; top: 2px; right: 6px;
+  width: 8px; height: 8px; background: #e85d75; border-radius: 50%;
+}
+
+/* ==================== 页面容器 ==================== */
+.page {
+  display: none; flex-direction: column;
+  height: calc(100vh - var(--nav-height));
+  overflow-y: auto; padding: 16px;
+  padding-bottom: calc(var(--nav-height) + 20px);
+}
+.page.active { display: flex; }
+
+/* ==================== 主页 ==================== */
+.home-top-bar {
+  text-align: center; padding: 8px 0 6px;
+  font-size: 0.95em; color: var(--text-light);
+}
+.season-icon { font-size: 1.2em; margin-right: 4px; }
+
+.home-hud {
+  display: flex; justify-content: center; gap: 16px;
+  padding: 10px 0; flex-wrap: wrap;
+}
+.hud-item {
+  background: var(--bg-card); border-radius: var(--radius-sm);
+  padding: 8px 14px; font-size: 0.9em; box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+
+.home-narrative {
+  flex: 1; overflow-y: auto;
+  margin: 12px 0; padding: 20px;
+  background: var(--bg-card); border-radius: var(--radius);
+  box-shadow: var(--shadow); line-height: 1.8; font-size: 0.95em;
+}
+.narr-text { color: var(--text); }
+
+.home-actions { padding: 8px 0 20px; }
+.actions-label {
+  text-align: center; font-size: 0.9em; color: var(--text-light); margin-bottom: 10px;
+}
+.actions-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+}
+.action-btn {
+  padding: 14px 8px; border: none; border-radius: var(--radius-sm);
+  font-size: 0.95em; font-family: var(--font); cursor: pointer;
+  background: var(--bg-card); color: var(--text);
+  box-shadow: var(--shadow); transition: all 0.2s;
+  border: 1.5px solid transparent;
+}
+.action-btn:active { transform: scale(0.95); border-color: var(--sakura); }
+.action-btn:disabled { opacity: 0.35; pointer-events: none; background: #f5f5f5; }
+.action-btn.special {
+  display: block; width: 100%; margin-top: 10px;
+  background: linear-gradient(135deg, #fde8ed, #fef0e8);
+  border: 2px solid var(--sakura); color: var(--sakura-dark);
+  font-size: 1em;
+}
+.action-btn.special:disabled { opacity: 0.3; }
+
+/* ==================== 关系图 ==================== */
+.network-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 4px; font-size: 0.9em; color: var(--text-light);
+}
+.network-hint { font-size: 0.8em; color: var(--text-lighter); }
+
+.bubble-canvas {
+  flex: 1; position: relative; overflow: hidden;
+  min-height: 300px;
+}
+.bubble-center {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.bubble-avatar { font-size: 2.4em; }
+.bubble-name { font-size: 0.85em; color: var(--sakura-dark); font-weight: 500; }
+
+/* 角色泡泡 */
+.char-bubble {
+  position: absolute; display: flex; flex-direction: column; align-items: center;
+  cursor: pointer; transition: all 0.5s ease; animation: bubbleIn 0.6s ease;
+}
+.char-bubble .bubble-circle {
+  width: 56px; height: 56px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3em; box-shadow: var(--shadow);
+  transition: all 0.3s;
+}
+.char-bubble .bubble-label {
+  font-size: 0.72em; margin-top: 2px; color: var(--text-light);
+  white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis;
+}
+.char-bubble:hover .bubble-circle { transform: scale(1.12); }
+.char-bubble.new-arrival .bubble-circle { animation: popIn 0.5s ease; }
+
+/* 泡泡颜色 */
+.bubble-stranger .bubble-circle { background: #f0ecf5; }
+.bubble-acquaintance .bubble-circle { background: var(--lavender-light); }
+.bubble-friend .bubble-circle { background: var(--peach-light); }
+.bubble-close .bubble-circle { background: #fde0e4; }
+.bubble-crush .bubble-circle { background: #fdd4dc; }
+.bubble-lover .bubble-circle { background: linear-gradient(135deg, #fdd4dc, #ffd4c0); }
+
+/* ==================== 角色选择浮层 ==================== */
+.char-select-modal { max-width: 420px; }
+.char-select-list { max-height: 50vh; overflow-y: auto; }
+.char-select-list .char-item { cursor: pointer; }
+.char-select-list .char-item:active { transform: scale(0.98); background: var(--sakura-light); }
+.char-select-empty {
+  text-align: center; padding: 30px 0; color: var(--text-lighter); font-size: 0.9em;
+}
+
+/* 好感趋势箭头 */
+.affinity-trend { font-size: 0.85em; margin-left: 4px; }
+.affinity-trend.up { color: #7ab890; }
+.affinity-trend.down { color: #d4787a; }
+
+/* ==================== 角色列表 ==================== */
+.char-tabs {
+  display: flex; gap: 8px; margin-bottom: 14px;
+}
+.char-tab {
+  flex: 1; padding: 10px 0; border: none; border-radius: 20px;
+  font-size: 0.9em; font-family: var(--font); cursor: pointer;
+  background: var(--bg-card); color: var(--text-light);
+  box-shadow: var(--shadow); transition: all 0.2s;
+}
+.char-tab.active {
+  background: linear-gradient(135deg, var(--sakura-light), var(--peach-light));
+  color: var(--sakura-dark); font-weight: 600;
+}
+
+.char-list { flex: 1; overflow-y: auto; }
+.char-empty, .mem-empty {
+  text-align: center; padding: 40px 20px; color: var(--text-lighter); font-size: 0.9em;
+}
+
+.char-item {
+  display: flex; align-items: center; gap: 14px; padding: 14px;
+  background: var(--bg-card); border-radius: var(--radius); margin: 8px 0;
+  box-shadow: var(--shadow); cursor: pointer; transition: all 0.2s;
+}
+.char-item:active { transform: scale(0.98); }
+.char-item .char-icon { font-size: 1.6em; }
+.char-item .char-info { flex: 1; }
+.char-item .char-info .name { font-size: 0.95em; font-weight: 500; }
+.char-item .char-info .meta { font-size: 0.8em; color: var(--text-light); }
+.char-item .char-affinity { text-align: right; font-size: 0.85em; color: var(--sakura-dark); }
+.affinity-bar {
+  width: 60px; height: 4px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden;
+}
+.affinity-bar .fill {
+  height: 100%; background: var(--sakura); border-radius: 2px; transition: width 0.5s;
+}
+
+/* 分隔线 */
+.char-divider {
+  text-align: center; padding: 10px 0; font-size: 0.75em; color: var(--text-lighter);
+}
+
+/* ==================== 角色详情弹窗 ==================== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.3);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px;
+}
+.modal {
+  background: var(--bg-card); border-radius: var(--radius);
+  padding: 24px; max-width: 400px; width: 100%;
+  max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.modal-close {
+  float: right; background: none; border: none; font-size: 1.2em;
+  cursor: pointer; color: var(--text-lighter);
+}
+.char-modal-body { margin: 12px 0; line-height: 1.7; font-size: 0.9em; }
+.char-modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.char-modal-actions button {
+  flex: 1; padding: 12px; border: none; border-radius: 25px;
+  font-size: 0.95em; font-family: var(--font); cursor: pointer; transition: all 0.2s;
+  background: var(--sakura-light); color: var(--sakura-dark);
+}
+.char-modal-actions button.primary {
+  background: linear-gradient(135deg, var(--sakura), var(--peach)); color: #fff;
+}
+.char-modal-actions button:disabled { opacity: 0.35; pointer-events: none; }
+
+/* ==================== 事件弹窗 ==================== */
+.event-modal { max-width: 440px; }
+.event-narrative {
+  line-height: 1.9; font-size: 0.95em; margin: 12px 0; white-space: pre-wrap;
+}
+.event-choices { display: flex; flex-direction: column; gap: 8px; }
+.event-choices button {
+  width: 100%; padding: 14px 18px; text-align: left;
+  background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 0.9em; font-family: var(--font); cursor: pointer; transition: all 0.2s; color: var(--text);
+}
+.event-choices button:active { border-color: var(--sakura); background: var(--sakura-light); }
+
+/* ==================== 回忆页 ==================== */
+.mem-header {
+  display: flex; gap: 6px; margin-bottom: 14px;
+}
+.mem-year-btn {
+  flex: 1; padding: 8px 0; border: none; border-radius: 20px;
+  font-size: 0.85em; font-family: var(--font); cursor: pointer;
+  background: var(--bg-card); color: var(--text-light); box-shadow: var(--shadow);
+  transition: all 0.2s;
+}
+.mem-year-btn.active {
+  background: linear-gradient(135deg, var(--sakura-light), var(--lavender-light));
+  color: var(--sakura-dark); font-weight: 600;
+}
+.mem-list { flex: 1; overflow-y: auto; }
+.mem-item {
+  padding: 12px 16px; margin: 6px 0; background: var(--bg-card);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  font-size: 0.88em; line-height: 1.6;
+}
+.mem-item .mem-date { font-size: 0.78em; color: var(--text-lighter); margin-bottom: 4px; }
+.mem-item.starred { border-left: 3px solid var(--gold); }
+.mem-item.starred .mem-date::before { content: '✨ '; }
+
+/* ==================== 设置页 ==================== */
+.settings-section {
+  margin-bottom: 20px; padding: 16px;
+  background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.settings-section h3 { font-size: 1em; margin-bottom: 12px; color: var(--sakura-dark); }
+.settings-section label {
+  display: block; font-size: 0.8em; color: var(--text-light); margin: 8px 0 4px;
+}
+.settings-section input {
+  width: 100%; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 0.9em; font-family: var(--font); outline: none; background: var(--bg);
+  color: var(--text); transition: border 0.2s;
+}
+.settings-section input:focus { border-color: var(--sakura); }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row button {
+  padding: 10px 18px; border: none; border-radius: 20px;
+  font-size: 0.85em; font-family: var(--font); cursor: pointer;
+  background: var(--bg); color: var(--text); transition: all 0.2s;
+  border: 1.5px solid var(--border);
+}
+.btn-row button:active { transform: scale(0.95); }
+.btn-row button.primary {
+  background: linear-gradient(135deg, var(--sakura), var(--peach));
+  color: #fff; border: none;
+}
+button.danger { background: #fde8ed; color: #d4787a; border-color: #f2a7b5; }
+
+.about-text {
+  text-align: center; font-size: 0.8em; color: var(--text-lighter); line-height: 1.6;
+}
+
+/* 确认弹窗 */
+.confirm-modal { text-align: center; max-width: 320px; }
+.confirm-modal p { font-size: 0.95em; margin-bottom: 16px; line-height: 1.6; }
+
+/* ==================== 动画 ==================== */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes bubbleIn {
+  from { opacity: 0; transform: scale(0.3); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes popIn {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 400px) {
+  .home-hud { gap: 8px; }
+  .hud-item { padding: 6px 10px; font-size: 0.8em; }
+  .actions-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .action-btn { padding: 12px 6px; font-size: 0.85em; }
+}
+
+/* ==================== 人设选择画面 ==================== */
+#personaChoiceScreen, #personaResultScreen, #customizeScreen {
+  background: linear-gradient(160deg, #fef5f7 0%, #fdf0f3 30%, #fef8f4 60%, #f8f4fc 100%);
+}
+
+.persona-choice-container {
+  max-width: 520px; width: 90%; margin: auto;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 32px 0; height: 100%; overflow-y: auto;
+}
+.persona-choice-header { text-align: center; margin-bottom: 28px; }
+.persona-choice-sakura { font-size: 48px; animation: float 3s ease-in-out infinite; }
+.persona-choice-header h2 {
+  font-size: 1.4em; font-weight: 400; color: var(--sakura-dark); margin: 12px 0 4px;
+}
+.persona-choice-desc { font-size: 0.9em; color: var(--text-light); }
+
+.persona-choice-cards {
+  display: flex; gap: 16px; width: 100%; margin-bottom: 20px;
+}
+.persona-card {
+  flex: 1; padding: 28px 20px; border: 2px solid var(--border);
+  border-radius: var(--radius); background: var(--bg-card);
+  cursor: pointer; transition: all 0.3s; text-align: center;
+  font-family: var(--font); color: var(--text);
+  box-shadow: var(--shadow);
+}
+.persona-card:hover, .persona-card:active {
+  border-color: var(--sakura); transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(242,167,181,0.25);
+}
+.persona-card-icon { font-size: 2.4em; margin-bottom: 12px; }
+.persona-card-title {
+  font-size: 1.1em; font-weight: 600; margin-bottom: 8px; color: var(--sakura-dark);
+}
+.persona-card-desc {
+  font-size: 0.85em; color: var(--text-light); line-height: 1.6; margin-bottom: 12px;
+}
+.persona-card-hint {
+  font-size: 0.75em; color: var(--text-lighter);
+  background: var(--sakura-light); padding: 4px 12px; border-radius: 12px;
+  display: inline-block;
+}
+
+.persona-choice-footer { margin-top: 8px; }
+.persona-skip-btn {
+  background: none; border: none; font-size: 0.85em; font-family: var(--font);
+  color: var(--text-lighter); cursor: pointer; text-decoration: underline;
+  transition: color 0.2s;
+}
+.persona-skip-btn:hover { color: var(--text-light); }
+
+/* ==================== AI人设结果展示 ==================== */
+.persona-result-container {
+  max-width: 480px; width: 90%; margin: auto;
+  display: flex; flex-direction: column; height: 100%;
+  padding: 24px 0;
+}
+.persona-result-header { text-align: center; margin-bottom: 20px; }
+.persona-result-sakura { font-size: 40px; animation: float 2s ease-in-out infinite; }
+.persona-result-header h2 {
+  font-size: 1.3em; font-weight: 400; color: var(--sakura-dark); margin: 8px 0 2px;
+}
+.persona-result-desc { font-size: 0.85em; color: var(--text-light); }
+
+.persona-result-card {
+  flex: 1; overflow-y: auto; background: var(--bg-card);
+  border-radius: var(--radius); padding: 24px; margin-bottom: 16px;
+  box-shadow: var(--shadow); line-height: 1.8; font-size: 0.92em;
+}
+.persona-result-loading {
+  text-align: center; color: var(--text-lighter); padding: 40px 0;
+}
+
+.persona-result-actions {
+  display: flex; gap: 12px; padding-bottom: 16px;
+}
+.persona-result-btn {
+  flex: 1; padding: 14px 0; border: none; border-radius: 25px;
+  font-size: 1em; font-family: var(--font); cursor: pointer; transition: all 0.2s;
+}
+.persona-result-btn.primary {
+  background: linear-gradient(135deg, var(--sakura), var(--peach));
+  color: #fff; box-shadow: 0 4px 12px rgba(242,167,181,0.35);
+}
+.persona-result-btn.secondary {
+  background: var(--bg-card); color: var(--text); border: 1.5px solid var(--border);
+}
+.persona-result-btn:active { transform: scale(0.96); }
+
+/* ==================== 自定义人设画面 ==================== */
+.customize-container {
+  max-width: 480px; width: 90%; margin: auto;
+  display: flex; flex-direction: column; height: 100%;
+  padding: 20px 0;
+}
+.customize-header { text-align: center; padding: 12px 0; }
+.customize-header h2 {
+  font-size: 1.3em; font-weight: 400; color: var(--sakura-dark);
+}
+.customize-desc { font-size: 0.85em; color: var(--text-light); margin-top: 4px; }
+
+.customize-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+.customize-field {
+  margin-bottom: 16px;
+}
+.customize-field label {
+  display: block; font-size: 0.9em; font-weight: 500; margin-bottom: 6px;
+  color: var(--text);
+}
+.customize-field .field-icon { margin-right: 4px; }
+.customize-field input, .customize-field textarea, .customize-field select {
+  width: 100%; padding: 12px 14px; border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 0.9em; font-family: var(--font);
+  background: var(--bg-card); color: var(--text); outline: none;
+  transition: border 0.2s; resize: vertical;
+}
+.customize-field input:focus, .customize-field textarea:focus, .customize-field select:focus {
+  border-color: var(--sakura);
+}
+.customize-field textarea { min-height: 60px; }
+.customize-field .field-hint {
+  font-size: 0.75em; color: var(--text-lighter); margin-top: 4px;
+}
+
+.customize-footer {
+  display: flex; gap: 12px; padding: 12px 0;
+}
+.customize-btn {
+  flex: 1; padding: 13px 0; border: none; border-radius: 25px;
+  font-size: 1em; font-family: var(--font); cursor: pointer; transition: all 0.2s;
+}
+.customize-btn.primary {
+  background: linear-gradient(135deg, var(--sakura), var(--peach));
+  color: #fff; box-shadow: 0 4px 12px rgba(242,167,181,0.35);
+}
+.customize-btn.secondary {
+  background: var(--bg-card); color: var(--text); border: 1.5px solid var(--border);
+}
+.customize-btn:active { transform: scale(0.96); }
+
+@media (max-width: 420px) {
+  .persona-choice-cards { flex-direction: column; }
+  .persona-card { padding: 20px 16px; }
+  .persona-card-icon { font-size: 2em; }
+}
