@@ -416,6 +416,13 @@ function update(dt) {
     canvas.style.cursor = 'none';
   }
 
+  // 遗憾融合演出更新
+  if (typeof fusionActive !== 'undefined' && fusionActive && typeof updateFusion === 'function') {
+    updateFusion(dt);
+    // 融合演出期间强制1x缩放
+    canvasZoom = 1;
+  }
+
   // Boss更新
   if(bossActive && typeof updateBoss==='function'){
     updateBoss(dt);
@@ -446,6 +453,15 @@ function update(dt) {
     startPreDiveTransition();
   }
   wasBossActive = bossActive;
+
+  // 遗憾融合演出完成 → 传送安全屋
+  if (typeof fusionActive !== 'undefined' && fusionActive && typeof fusionState !== 'undefined' && fusionState && fusionState.phase === 5/*FUSION.DONE*/ && !Dialogue.active) {
+    fusionActive = false; fusionState = null;
+    battleWords = [];
+    particles = [];
+    document.getElementById('stun-overlay').classList.remove('active');
+    if (typeof returnToMap === 'function') returnToMap('boss_yi');
+  }
 
   // 地图模式：检查房间完成 + 战斗波次
   if (prologuePhase === PROLOGUE.DIVING && typeof currentDiveRoom !== 'undefined' && currentDiveRoom) {
@@ -503,6 +519,34 @@ function update(dt) {
 
   // 连击衰减
   if(comboTimer>0){comboTimer-=dt;if(comboTimer<=0){combo=0;comboWords=[];elComboDisplay.classList.remove('show');}}
+
+  // 护盾衰减
+  if (hasShield && shieldHP > 0) {
+    shieldDecayTimer += dt;
+    if (shieldDecayTimer > 5.0) { shieldDecayTimer = 0; shieldHP = Math.max(0, shieldHP - 1); updatePlayerUI(); }
+  } else { shieldDecayTimer = 0; }
+
+  // 焚天「炎」debuff
+  if (blazeCooldown > 0) { blazeCooldown -= dt; if (blazeCooldown <= 0) blazeProgress = 0; }
+  if (blazeActive && blazeTimer > 0) {
+    blazeTimer -= dt;
+    // 每秒造成灼烧伤害
+    if (Math.floor(blazeTimer * 10) !== Math.floor((blazeTimer + dt) * 10)) {
+      const blazeDmg = Math.floor((playerWeapon ? playerWeapon.damage : 5) * 0.5);
+      if (bossActive && typeof damageBoss === 'function') {
+        // Boss战：直接扣血（不走dealDamage，避免触发VICTORY）
+        if (bossState && bossState.hp > 0) { bossState.hp = Math.max(0, bossState.hp - blazeDmg); }
+      } else if (enemyHP > 0) {
+        enemyHP = Math.max(0, enemyHP - blazeDmg);
+        updateEnemyUI();
+      }
+      // 灼烧粒子
+      const ex = enemyEntity ? enemyEntity.x : W * 0.5;
+      const ey = enemyEntity ? enemyEntity.y : H * 0.22;
+      particles.push(new DamageText(ex + (Math.random() - 0.5) * 30, ey - 10, `炎-${blazeDmg}`, '#ff6600'));
+    }
+    if (blazeTimer <= 0) { blazeActive = false; blazeCooldown = 3.0; }
+  }
 
   // 敌人实体动画
   if (typeof updateEnemyEntity === 'function') updateEnemyEntity(dt);
@@ -736,6 +780,8 @@ function draw() {
     particles.forEach(p=>p.draw(ctx));
     // Boss渲染
     if(bossActive && typeof drawBoss==='function') drawBoss(ctx);
+    // 遗憾融合演出渲染（覆盖在Boss之上）
+    if (typeof fusionActive !== 'undefined' && fusionActive && typeof drawFusion === 'function') drawFusion(ctx);
   }
 
   // 主角飘浮文字碎片（drift模式）
@@ -922,6 +968,15 @@ canvas.addEventListener('mousemove',e=>{
 });
 
 canvas.addEventListener('click',e=>{
+  // 融合演出期间只允许对话交互，其他点击屏蔽
+  if (typeof fusionActive !== 'undefined' && fusionActive) {
+    if (typeof Dialogue !== 'undefined' && Dialogue.active) {
+      if (typeof Sound !== 'undefined') Sound.dialogueAdvance();
+      if (!Dialogue.complete) Dialogue.skip();
+      else Dialogue.hide();
+    }
+    return;
+  }
   // CSS缩放坐标修正
   const cx = canvasZoom!==1 ? (e.clientX-W/2)/canvasZoom+W/2 : e.clientX;
   const cy = canvasZoom!==1 ? (e.clientY-H/2)/canvasZoom+H/2 : e.clientY;
@@ -1086,6 +1141,7 @@ function saveGame() {
     difficulty: difficulty,
     unlockedWeapons: [...unlockedWeapons],
     affection: Tutorial.affection,
+    threatLevel: typeof threatLevel !== 'undefined' ? threatLevel : 0,
     prologueCompleted: true,
     timestamp: Date.now()
   };
@@ -1134,6 +1190,7 @@ function continueGame() {
   if(!save) return;
   difficulty = save.difficulty || 1;
   if(save.unlockedWeapons) unlockedWeapons = new Set(save.unlockedWeapons);
+  if(typeof save.threatLevel !== 'undefined' && typeof threatLevel !== 'undefined') threatLevel = save.threatLevel;
   // 跳过菜单和标题，直接开始
   document.getElementById('main-menu').classList.add('hidden');
   // BGM
@@ -1237,64 +1294,9 @@ function showChapterCard(title, subtitle, hint, onclick) {
 // ── 难度选择 → 章节卡 → 开始 ──
 function selectDifficulty(idx) {
   difficulty = idx;
+  if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined') threatLevel = THREAT.BASE[idx] || 2;
   document.getElementById('difficulty-screen').classList.add('hidden');
   showChapterCard('序章 · 觉醒', '意识之海的深处，有什么在等待着你……', '点击任意位置开始', startPrologue);
-}
-
-/** 快速测试：跳过教程+憾Boss，直接进入潜航地图 */
-function quickTestBoss() {
-  difficulty = 1; // 标准难度
-  document.getElementById('main-menu').classList.add('hidden');
-  document.getElementById('difficulty-screen').classList.add('hidden');
-
-  // 初始化状态
-  Dialogue.init();
-  if (typeof Sound !== 'undefined' && Sound.startBGM) Sound.startBGM(0);
-
-  // 跳过教程和憾Boss
-  prologuePhase = PROLOGUE.DIVING;
-  prologueHanDefeated = true;
-  wasBossActive = false;
-  preDiveStep = -1;
-  preDiveTexts = [];
-  mapActive = false;
-  currentDiveRoom = null;
-
-  // 默认装备
-  playerWeapon = EQUIPMENT.weapons['beginner_brush'];
-  playerArmor = EQUIPMENT.armors['thin_silk'];
-  playerDefense = playerArmor.defense || 0;
-  playerSkill = EQUIPMENT.skills['concentration'];
-  skillState = { collected: [], chargeLevel: 0, ready: false };
-  unlockedWeapons = new Set(['beginner_brush']);
-  nextAttackBoost = false;
-  updateSkillUI();
-
-  // 战斗状态
-  playerHP = playerMaxHP = 100;
-  hasShield = false; shieldHP = 0;
-  enemyHP = enemyMaxHP = 999; enemyTimer = enemyInterval = 99;
-  combo = 0; comboTimer = 0; comboWords = [];
-  nextAttackBoost = false;
-  updatePlayerUI();
-  updateEnemyUI();
-  updateSkillUI();
-  if (elComboDisplay) elComboDisplay.classList.remove('show');
-
-  // 初始化地图
-  if (typeof initMap === 'function') initMap();
-  // 跳过睁眼演出
-  if (typeof Cinematic !== 'undefined') Cinematic.eyeOpen.done = true;
-  Tutorial.enterPhase(PHASE.BATTLE);
-
-  document.getElementById('enemy-zone').style.opacity = '0';
-  document.getElementById('stage-hint').style.opacity = '0';
-  document.getElementById('player-zone').style.opacity = '1';
-
-  // Toast提示
-  const toast = document.getElementById('save-toast');
-  if (toast) { toast.textContent = '快速测试模式 · 点击节点前往遗Boss'; toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2500); }
 }
 
 function startPrologue() {

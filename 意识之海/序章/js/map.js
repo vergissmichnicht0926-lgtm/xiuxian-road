@@ -113,6 +113,11 @@ function enterRoom(roomId) {
 
     const room = ROOM_DATA.find(r => r.id === roomId);
     if (room && typeof startRoom === 'function') {
+      // 根据层级更新威胁等级
+      if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined' && room.layer) {
+        const baseThreat = THREAT.BASE[difficulty] || 2;
+        threatLevel = Math.min(10, baseThreat + (room.layer - 1) * THREAT.PER_LAYER);
+      }
       startRoom(room);
     }
   }, 400);

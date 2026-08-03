@@ -82,6 +82,8 @@ function checkRoomComplete() {
       if (eventResolved && !eventMonsterDefeated && (enemyHP > 0 || eventMonsterWavePending || eventMonsterWaves > 0)) return false;
       return !Dialogue.active && roomDialogueIndex >= roomDialogueQueue.length;
     case 'boss':
+      // 融合演出中不触发正常完成（由融合DONE逻辑处理）
+      if (typeof fusionActive !== 'undefined' && fusionActive) return false;
       // Boss战结束（战败时Tutorial.phase为DEFEAT，不触发完成，由战败流程处理）
       return !bossActive && !Dialogue.active && (typeof Tutorial === 'undefined' || Tutorial.phase !== 'defeat');
     case 'safe_house':
@@ -117,8 +119,22 @@ function startStartRoom(room) {
 /** 战斗 — 噪点波次 */
 function startCombatRoom(room) {
   const waves = room.waves || 3;
-  const hp = room.enemyHP || 40;
-  const interval = room.enemyInterval || 6.0;
+  const baseStats = {
+    enemyHP: room.enemyHP || 40,
+    enemyInterval: room.enemyInterval || 6.0,
+    enemyDmg: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].enemyDmg : [5,8],
+    noiseRate: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].noiseRate : 0.15,
+    speed: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].speed : 0.8,
+  };
+  // 应用威胁等级修正
+  let modified;
+  if (typeof applyThreatModifiers === 'function') {
+    modified = applyThreatModifiers(baseStats);
+  } else {
+    modified = baseStats;
+  }
+  const hp = modified.enemyHP;
+  const interval = modified.enemyInterval;
   const hard = room.hardMode || false;
 
   roomCombatWaves = waves;
@@ -225,6 +241,11 @@ function checkCombatWave() {
 function startRestRoom(room) {
   // BGM: 温暖音乐
   if (typeof Sound !== 'undefined' && Sound.playBGM) Sound.playBGM('safehouse', 1.5);
+
+  // 重置威胁等级为基础值
+  if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined') {
+    threatLevel = THREAT.BASE[difficulty] || 2;
+  }
 
   // 满血
   if (typeof playerHP !== 'undefined') {
@@ -746,6 +767,8 @@ function handleEventChoice(opt) {
   eventResolved = true; // 防止重复生成
 
   if (opt.action === 'force') {
+    // 威胁+1
+    if (typeof threatLevel !== 'undefined') threatLevel = Math.min(10, threatLevel + 1);
     if (Math.random() < 0.7) {
       // 70%：直接获得武器
       const wpnKeys = Object.keys(EQUIPMENT.weapons).filter(k => k !== 'beginner_brush');
@@ -792,7 +815,8 @@ function handleEventChoice(opt) {
       playRoomDialogue();
     }
   } else {
-    // 绕过去
+    // 绕过去 — 威胁-1
+    if (typeof threatLevel !== 'undefined') threatLevel = Math.max(0, threatLevel - 1);
     if (typeof particles !== 'undefined') {
       for (let i = 0; i < 10; i++) {
         particles.push(new HitParticle(W*0.5, H*0.5, '#88aacc', '·'));
@@ -905,6 +929,11 @@ function startBossRoom(room) {
 function startSafeHouseRoom(room) {
   // BGM: 安全屋温暖音乐
   if (typeof Sound !== 'undefined' && Sound.playBGM) Sound.playBGM('safehouse', 2.0);
+
+  // 重置威胁等级
+  if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined') {
+    threatLevel = THREAT.BASE[difficulty] || 2;
+  }
 
   // 恢复玩家HP（象征性地）
   if (typeof playerHP !== 'undefined') {

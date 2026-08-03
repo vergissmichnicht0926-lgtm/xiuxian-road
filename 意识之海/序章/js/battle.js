@@ -17,6 +17,12 @@ let playerDefense=0; // 当前防具减伤值
 let playerHurtTimer=0; // 玩家血条受击抖动
 let nextAttackBoost=false;
 let combo=0, comboTimer=0, comboWords=[];
+let shieldDecayTimer=0; // 护盾衰减计时器
+let blazeProgress=0;    // 焚天「炎」debuff进度 0~100
+let blazeActive=false;  // 炎爆是否激活
+let blazeTimer=0;       // 炎爆剩余时间
+let blazeCooldown=0;    // 炎爆冷却
+let threatLevel=0;      // 威胁等级 0~10
 
 // DOM引用（main.js中赋值）
 let elComboDisplay, elComboCount, elComboWords;
@@ -35,6 +41,15 @@ function getCatConfig(cat) {
     return { words:playerSkill.chars, color:playerSkill.color, glow:playerSkill.glow };
   }
   return null;
+}
+
+/** combo保护：降级而非清零 */
+function comboPenalty(levels) {
+  levels = levels || 2;
+  combo = Math.max(0, combo - levels);
+  comboTimer = Math.max(0, comboTimer - 0.3);
+  if (combo === 0) { comboWords = []; elComboDisplay.classList.remove('show'); }
+  else { comboWords = comboWords.slice(-Math.min(combo, 5)); updateComboColors(); }
 }
 
 /** 刷新敌人实体（根据难度/房间类型） */
@@ -119,6 +134,47 @@ function dealDamage(dmg,isCombo) {
   }
 }
 
+/** 应用武器特殊效果（焚天炎debuff / 霜序减速） */
+function applyWeaponEffects() {
+  if (!playerWeapon) return;
+
+  // 焚天「炎」debuff
+  if (playerWeapon.blaze && blazeCooldown <= 0) {
+    // Boss CHARGING/ATTACK阶段冻结进度
+    const bossFreeze = bossActive && bossState &&
+      (bossState.phase === BOSS_PHASE.CHARGING || bossState.phase === BOSS_PHASE.ATTACK);
+    if (!bossFreeze) {
+      blazeProgress = Math.min(100, blazeProgress + 20);
+      // 炎爆触发
+      if (blazeProgress >= 100 && !blazeActive) {
+        blazeActive = true; blazeTimer = 6.0; blazeProgress = 100;
+        for (let i = 0; i < 15; i++) {
+          const p = new HitParticle(W * 0.5, H * 0.35, '#ff6600', '炎');
+          p.vx = (Math.random() - 0.5) * 3; p.vy = (Math.random() - 0.5) * 3 - 1;
+          p.size = 8 + Math.random() * 14; p.life = 20 + Math.random() * 25;
+          particles.push(p);
+        }
+        particles.push(new DamageText(W * 0.5, H * 0.28, '炎爆!', '#ff6600'));
+        Sound.anomaly();
+      }
+    }
+  }
+
+  // 霜序减速
+  if (playerWeapon.slow) {
+    enemyTimer = Math.min(enemyTimer + 0.25, enemyInterval * 1.5);
+    // 冰霜粒子
+    if (Math.random() < 0.5) {
+      const ex = enemyEntity ? enemyEntity.x : W * 0.5;
+      const ey = enemyEntity ? enemyEntity.y : H * 0.26;
+      const fp = new HitParticle(ex, ey, '#99ccff', '❄');
+      fp.vx *= 0.3; fp.vy *= 0.3; fp.size = 6 + Math.random() * 8;
+      fp.life = 15 + Math.random() * 15; fp.gravity = -0.03;
+      particles.push(fp);
+    }
+  }
+}
+
 /** 对玩家施加伤害：防御减伤 → 护盾吸收 → HP扣除，返回实际HP损失 */
 function applyDamageToPlayer(rawDmg) {
   // 防御减伤
@@ -147,7 +203,7 @@ function enemyAttack() {
     Sound.shieldBlock();
     particles.push(new DamageText(W*0.5,H*0.65,'闪避!','#88ccff'));
     for(let i=0;i<8;i++) particles.push(new HitParticle(W*0.5,H*0.7,'#88ccff','◇'));
-    combo=0;comboTimer=0;comboWords=[];elComboDisplay.classList.remove('show');
+    comboPenalty();
     enemyTimer=enemyInterval;
     return;
   }
@@ -184,7 +240,7 @@ function enemyAttack() {
     particles.push(new DamageText(W*0.5,H*0.65,`-${result.dmg}${defInfo}`,'#ff4444'));
     for(let i=0;i<10;i++) particles.push(new HitParticle(W*0.5,H*0.7,'#ff3333','×'));
   }
-  combo=0;comboTimer=0;comboWords=[];elComboDisplay.classList.remove('show');
+  comboPenalty();
 
   // 玩家死亡判定
   if(playerHP<=0){
@@ -300,15 +356,45 @@ function balanceWords() {
     }
   }
 
-  // 干扰字
+  // 干扰字（增强版：随威胁等级增加数量+追踪+伪装）
   const playerCount=battleWords.filter(bw=>bw.alive&&bw.cat!=='乱').length;
-  const noiseTarget=Math.min(6,Math.floor(playerCount*diff.noiseRate)+1);
+  const noiseBoost = Math.min(0.16, (threatLevel || 0) * 0.02);
+  const noiseActualRate = Math.min(0.45, diff.noiseRate + noiseBoost);
+  const noiseTarget=Math.min(8, Math.floor(playerCount*noiseActualRate)+1);
   const noiseCurrent=battleWords.filter(bw=>bw.alive&&bw.cat==='乱').length;
 
   if(noiseCurrent<noiseTarget && addedThisCall < maxPerCall){
-    const text=NOISE_WORDS[Math.floor(Math.random()*NOISE_WORDS.length)];
+    const tl = threatLevel || 0;
+    // 伪装比例：威胁0~1→0%, 2~3→20%, 4~5→35%, 6~7→50%, 8+→65%
+    const fakeRate = tl <= 1 ? 0 : tl <= 3 ? 0.20 : tl <= 5 ? 0.35 : tl <= 7 ? 0.50 : 0.65;
+    let text, catColor, catGlow, isFake=false;
+
+    if (Math.random() < fakeRate) {
+      // 伪装字：随机选攻/防/愈伪装
+      const catRoll = Math.random();
+      if (catRoll < 0.5) {
+        text = NOISE_FAKE_ATTACK[Math.floor(Math.random()*NOISE_FAKE_ATTACK.length)];
+        const cfg = getCatConfig('攻'); catColor = cfg ? cfg.color : '#ff6644'; catGlow = cfg ? cfg.glow : '#cc3311';
+      } else if (catRoll < 0.8) {
+        text = NOISE_FAKE_DEFENSE[Math.floor(Math.random()*NOISE_FAKE_DEFENSE.length)];
+        const cfg = getCatConfig('防'); catColor = cfg ? cfg.color : '#66aaff'; catGlow = cfg ? cfg.glow : '#3366cc';
+      } else {
+        text = NOISE_FAKE_HEAL[Math.floor(Math.random()*NOISE_FAKE_HEAL.length)];
+        catColor = '#44dd88'; catGlow = '#228844';
+      }
+      isFake = true;
+    } else {
+      text = NOISE_WORDS[Math.floor(Math.random()*NOISE_WORDS.length)];
+    }
+
     const nw=new BattleWord('乱',text);
-    nw.size=18+Math.random()*8;nw.alpha=0.55;
+    nw._isFakeNoise = isFake;
+    nw._noiseCatColor = isFake ? catColor : null;
+    nw._noiseCatGlow = isFake ? catGlow : null;
+    // 追踪强度：威胁0~1→0, 2~3→0.3, 4~5→0.5, 6~7→0.7, 8+→1.0
+    nw._trackMouse = tl <= 1 ? 0 : tl <= 3 ? 0.3 : tl <= 5 ? 0.5 : tl <= 7 ? 0.7 : 1.0;
+    nw.size = isFake ? (20+Math.random()*8) : (18+Math.random()*8);
+    nw.alpha = isFake ? 0.72 : 0.55;
     nw.vx*=diff.speed;nw.vy*=diff.speed;nw.wobbleAmp*=diff.speed;
     nw.noiseLife=diff.noiseLife;
     battleWords.push(nw); addedThisCall++;
@@ -323,7 +409,8 @@ function refreshWords() { balanceWords(); }
 /** 更新连击颜色 */
 function updateComboColors() {
   let clr='#ffffff';
-  if(combo>=7) clr='#ffdd00';
+  if(combo>=10) clr='#ff4400';
+  else if(combo>=7) clr='#ffdd00';
   else if(combo>=5) clr='#ff88ff';
   else if(combo>=3) clr='#ffaa44';
   elComboCount.style.color=clr;
@@ -580,11 +667,11 @@ function handleBattleClick(bw) {
       refreshWords();
       return;
     }
-    const bonus=combo>=7?3:combo>=5?2:combo>=3?1.5:1;
+    const bonus=combo>=10?2.5:combo>=7?2.0:combo>=5?1.5:combo>=3?1.2:1;
     const boostMult=nextAttackBoost?2:1;
     if(nextAttackBoost){nextAttackBoost=false;skillState.ready=false;particles.push(new DamageText(bw.x,bw.y-14,'倍击!','#ffaa44'));}
     const baseDmg=playerWeapon?playerWeapon.damage:10;
-    const dmg=Math.floor((baseDmg+Math.random()*6)*bonus*boostMult);
+    const dmg=Math.floor((baseDmg+Math.random()*3)*bonus*boostMult);
 
     // Boss战：攻击判定（蓄力期0.8x / 暴露期1.5x / 其他无效）
     if(bossActive && typeof hitBossPart==='function'){
@@ -595,10 +682,11 @@ function handleBattleClick(bw) {
         damageBoss(dmg, mult);
 
         // Boss战连击数
-        if([3,5,7].includes(combo+1)) Sound.comboMilestone(combo+1); else Sound.attack();
-        combo++;comboTimer=1.5;comboWords.push(bw.text);
+        if([3,5,7,10].includes(combo+1)) Sound.comboMilestone(combo+1); else Sound.attack();
+        combo++;comboTimer=2.0;comboWords.push(bw.text);
         if(comboWords.length>5) comboWords.shift();
         elComboDisplay.classList.add('show');elComboCount.textContent=`×${combo}`;updateComboColors();
+        applyWeaponEffects();
       } else {
         // 非蓄力/暴露期点击无效
         particles.push(new DamageText(bw.x,bw.y-8,'无效','#888888'));
@@ -611,10 +699,11 @@ function handleBattleClick(bw) {
     // 普通敌人
     dealDamage(dmg,combo>=3);
 
-    if([3,5,7].includes(combo+1)) Sound.comboMilestone(combo+1); else Sound.attack();
-    combo++;comboTimer=1.5;comboWords.push(bw.text);
+    if([3,5,7,10].includes(combo+1)) Sound.comboMilestone(combo+1); else Sound.attack();
+    combo++;comboTimer=2.0;comboWords.push(bw.text);
     if(comboWords.length>5) comboWords.shift();
     elComboDisplay.classList.add('show');elComboCount.textContent=`×${combo}`;updateComboColors();
+    applyWeaponEffects();
     const cfg=getCatConfig('攻');
     for(let i=0;i<10;i++) particles.push(new HitParticle(bw.x,bw.y,cfg?cfg.color:'#ff6644',bw.text));
     bw.alive=false;bw.targetAlpha=0;
@@ -628,7 +717,7 @@ function handleBattleClick(bw) {
     shieldHP = Math.min(oldShield + perWord, maxShield);
     hasShield = true;
     updatePlayerUI();Sound.defense();
-    combo=0;comboTimer=0;comboWords=[];elComboDisplay.classList.remove('show');
+    comboPenalty();
     const cfg=getCatConfig('防');
     for(let i=0;i<10;i++) particles.push(new HitParticle(bw.x,bw.y,cfg?cfg.color:'#66aaff','□'));
     particles.push(new DamageText(bw.x,bw.y-8,`+${shieldHP - oldShield}盾`,cfg?cfg.color:'#66aaff'));
@@ -636,7 +725,7 @@ function handleBattleClick(bw) {
     return;
   }
   if(bw.cat==='愈'){
-    const healAmt=2+Math.floor(Math.random()*2);
+    const healAmt=3+Math.floor(Math.random()*3); // 3~5 HP
     playerHP=Math.min(100,playerHP+healAmt);updatePlayerUI();Sound.heal();
     for(let i=0;i<6;i++) particles.push(new HitParticle(bw.x,bw.y,'#44dd88','+'));
     particles.push(new DamageText(bw.x,bw.y-8,`+${healAmt}`,'#44dd88'));
@@ -645,12 +734,45 @@ function handleBattleClick(bw) {
   }
   if(bw.cat==='乱'){
     Sound.noise();Sound.stun();
+    const tl = threatLevel || 0;
+    // 惩罚随威胁升级：低威胁→轻, 高威胁→重
+    const flashDur = tl <= 2 ? 500 : tl <= 5 ? 400 : 300;
+    const comboLoss = tl <= 2 ? 2 : tl <= 5 ? 3 : 99; // 99 = full reset
+    const hpLoss = tl <= 2 ? 0 : tl <= 5 ? (1+Math.floor(Math.random()*2)) : (2+Math.floor(Math.random()*3));
+
     document.getElementById('stun-overlay').classList.add('active');
-    setTimeout(()=>document.getElementById('stun-overlay').classList.remove('active'),650);
-    combo=0;comboTimer=0;comboWords=[];elComboDisplay.classList.remove('show');
-    particles.push(new DamageText(bw.x,bw.y,'混乱','#ff4444'));
+    setTimeout(()=>document.getElementById('stun-overlay').classList.remove('active'), flashDur);
+
+    if (comboLoss >= 99) { combo = 0; comboTimer = 0; comboWords = []; elComboDisplay.classList.remove('show'); }
+    else comboPenalty(comboLoss);
+
+    if (hpLoss > 0) {
+      playerHP = Math.max(0, playerHP - hpLoss);
+      updatePlayerUI();
+      particles.push(new DamageText(bw.x, bw.y - 10, `-${hpLoss}`, '#ff4444'));
+    }
+
+    const label = bw._isFakeNoise ? '伪装!' : '混乱';
+    particles.push(new DamageText(bw.x,bw.y,label,'#ff4444'));
     for(let i=0;i<5;i++) particles.push(new HitParticle(bw.x,bw.y,'#ff4444','×'));
     bw.alive=false;bw.targetAlpha=0;
     return;
   }
+}
+
+/** 应用威胁等级修正到战斗数值 */
+function applyThreatModifiers(baseStats) {
+  const t = threatLevel || 0;
+  const dl = difficulty || 1;
+  const diff = DIFFICULTY[dl];
+  return {
+    enemyHP:       Math.floor((baseStats.enemyHP || diff.enemyHP) * (1 + t * 0.06)),
+    enemyDmg:      [
+      Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[0] : diff.enemyDmg[0]) * (1 + t * 0.05)),
+      Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[1] : diff.enemyDmg[1]) * (1 + t * 0.05))
+    ],
+    enemyInterval: Math.max(2.5, (baseStats.enemyInterval || diff.enemyInterval) * (1 - t * 0.03)),
+    noiseRate:     Math.min(0.45, (baseStats.noiseRate || diff.noiseRate) + t * 0.02),
+    speed:         (baseStats.speed || diff.speed) + t * 0.06,
+  };
 }

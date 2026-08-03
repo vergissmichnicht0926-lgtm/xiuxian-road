@@ -121,7 +121,7 @@ const BulletPattern = {
   /** 雨帘 — 整体正弦摆动下落，幅度匹配心锁圈直径 */
   rain(centerX, centerY, char, count, speed, color, damage, size) {
     const projs = [];
-    const spread = 720; // 覆盖更广的水平范围
+    const spread = Math.max(520, W * 0.50); // 中等宽度，不过散
     const sharedFreq = 2.8;
     const sharedPhase = performance.now() * 0.001 * 2.0; // 时间驱动，每波相位自然偏移
     for (let i = 0; i < count; i++) {

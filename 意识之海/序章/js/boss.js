@@ -23,11 +23,11 @@ const BOSS_CONFIG = {
 
     attacks: [
       // 偏旁冲撞 — 左部件"忄"飞向鼠标，弹跳追踪
-      { type:'left_charge',  speed:15, maxSpeed:24, damage:28, color:'#ff5544', bounces:2 },
+      { type:'left_charge',  speed:15, maxSpeed:24, damage:36, color:'#ff5544', bounces:2 },
       // 引力场 + 螺旋弹幕 — 右部件"感"制造引力漩涡
-      { type:'gravity_field', pattern:'spiral', count:10, speed:1.6, maxSpeed:2.8, damage:10, color:'#ff8877', gravityIntensity:0.7, duration:6.0, bulletSize:24, bulletInterval:0.32 },
+      { type:'gravity_field', pattern:'spiral', count:10, speed:1.6, maxSpeed:2.8, damage:15, color:'#ff8877', gravityIntensity:0.7, duration:6.0, bulletSize:24, bulletInterval:0.32 },
       // 心锁 + 雨弹幕 — 左部件"忄"锚定锁链，雨帘正弦慢落
-      { type:'heart_lock', pattern:'rain', count:6, speed:2.0, maxSpeed:3.0, damage:7, color:'#ff5544', lockRadius:180, duration:3.6, bulletSize:22, bulletInterval:0.42 },
+      { type:'heart_lock', pattern:'rain', count:6, speed:2.0, maxSpeed:3.0, damage:11, color:'#ff5544', lockRadius:180, duration:3.6, bulletSize:22, bulletInterval:0.42 },
     ]
   },
   yi: {
@@ -39,11 +39,11 @@ const BOSS_CONFIG = {
 
     attacks: [
       // 技能1: 辶·残影追 — 3重瞬移+依次冲撞（间隔0.5s）
-      { type:'left_charge', speed:20, maxSpeed:28, damage:24, color:'#ffcc44', bounces:0, afterimages:3, afterimageInterval:0.5 },
+      { type:'left_charge', speed:20, maxSpeed:28, damage:32, color:'#ffcc44', bounces:0, afterimages:3, afterimageInterval:0.5 },
       // 技能2: 贵·雨金 — 金箔般的大范围雨弹幕，慢速坠落覆盖战场
-      { type:'right_bullet', pattern:'rain', count:7, speed:2.2, maxSpeed:3.5, damage:9, color:'#ffdd44', duration:4.5, bulletSize:28, bulletInterval:0.38 },
+      { type:'right_bullet', pattern:'rain', count:7, speed:2.2, maxSpeed:3.5, damage:14, color:'#ffdd44', duration:4.5, bulletSize:28, bulletInterval:0.38 },
       // 技能3: 遗·归尘爆 — 撒炸弹+延迟全屏引爆
-      { type:'delayed_burst', bombs:6, burstCount:8, damage:8, color:'#ffdd44', layoutTime:2.0, warnTime:1.0, bombSpeed:1.5 },
+      { type:'delayed_burst', bombs:6, burstCount:8, damage:13, color:'#ffdd44', layoutTime:2.0, warnTime:1.0, bombSpeed:1.5 },
     ]
   }
 };
@@ -66,9 +66,10 @@ function initBoss(key) {
   if (typeof Sound !== 'undefined' && Sound.setBGMIntensity) Sound.setBGMIntensity(0.7);
   const cx = W*0.5, cy = H*0.22, cfg = bossConfig;
 
-  // 根据难度设置血量: 简单400, 中等800, 困难1200
-  const diffHP = [400, 800, 1200];
-  const hp = (typeof difficulty !== 'undefined') ? (diffHP[difficulty] || 400) : 400;
+  // 血量 = config基础值 × 难度倍率 [0.8, 1.0, 1.3]
+  const diffMult = [0.8, 1.0, 1.3];
+  const mult = (typeof difficulty !== 'undefined') ? (diffMult[difficulty] || 1.0) : 1.0;
+  const hp = Math.floor(cfg.hp * mult);
   bossState = {
     phase: BOSS_PHASE.ENTRANCE, hp: hp, maxHP: hp, timer: 0,
     left:  makePart(cx - cfg.splitDist*0.5, -120, cfg.partSize),
@@ -247,7 +248,12 @@ function updateBoss(dt) {
     case BOSS_PHASE.DEFEATED:
       s.left.x+=(Math.random()-0.5)*4; s.left.y-=0.6;
       s.right.x+=(Math.random()-0.5)*4; s.right.y-=0.5;
-      if ((s.timer+=dt)>3) { bossActive=false; bossState=null; bossProjectiles=[]; restorePlayerWords(); }
+      if (s._fusionPending) {
+        // 假撤退：部件上飘但不清理，等憾冲入合体
+        s.left.y -= 0.4; s.right.y -= 0.35;
+      } else if ((s.timer+=dt)>3) {
+        bossActive=false; bossState=null; bossProjectiles=[]; restorePlayerWords();
+      }
       break;
   }
 
@@ -1010,8 +1016,10 @@ function restorePlayerWords() { if(typeof balanceWords==='function') balanceWord
 
 function onPlayerHitByProjectile(proj) {
   // Boss战受击重置连击
-  if(typeof combo!=='undefined'){combo=0;comboTimer=0;comboWords=[];if(typeof elComboDisplay!=='undefined')elComboDisplay.classList.remove('show');}
-  const result = typeof applyDamageToPlayer==='function' ? applyDamageToPlayer(proj.damage) : {dmg:proj.damage, absorbed:0};
+  if(typeof comboPenalty==='function') comboPenalty(); else{if(typeof combo!=='undefined'){combo=0;comboTimer=0;comboWords=[];if(typeof elComboDisplay!=='undefined')elComboDisplay.classList.remove('show');}}
+  const diffDmgMult = [0.85, 1.0, 1.2];
+  const dmgMult = (typeof difficulty!=='undefined') ? (diffDmgMult[difficulty] || 1.0) : 1.0;
+  const result = typeof applyDamageToPlayer==='function' ? applyDamageToPlayer(Math.floor(proj.damage * dmgMult)) : {dmg:Math.floor(proj.damage * dmgMult), absorbed:0};
   shakeAmount=Math.max(shakeAmount,4);
   if (result.absorbed > 0) {
     particles.push(new DamageText(proj.x,proj.y-10,`盾-${result.absorbed}`,'#66aaff'));
@@ -1026,8 +1034,10 @@ function onPlayerHitByProjectile(proj) {
 
 function onHitByLeftPart(dmg) {
   // Boss战受击重置连击
-  if(typeof combo!=='undefined'){combo=0;comboTimer=0;comboWords=[];if(typeof elComboDisplay!=='undefined')elComboDisplay.classList.remove('show');}
-  const result = typeof applyDamageToPlayer==='function' ? applyDamageToPlayer(dmg) : {dmg, absorbed:0};
+  if(typeof comboPenalty==='function') comboPenalty(); else{if(typeof combo!=='undefined'){combo=0;comboTimer=0;comboWords=[];if(typeof elComboDisplay!=='undefined')elComboDisplay.classList.remove('show');}}
+  const diffDmgMult = [0.85, 1.0, 1.2];
+  const dmgMult = (typeof difficulty!=='undefined') ? (diffDmgMult[difficulty] || 1.0) : 1.0;
+  const result = typeof applyDamageToPlayer==='function' ? applyDamageToPlayer(Math.floor(dmg * dmgMult)) : {dmg:Math.floor(dmg * dmgMult), absorbed:0};
   shakeAmount=Math.max(shakeAmount,8);
   if (result.absorbed > 0) {
     particles.push(new DamageText(mx,my-15,`盾-${result.absorbed}`,'#66aaff'));
@@ -1063,25 +1073,45 @@ function damageBoss(dmg, multiplier) {
     }
   }
 
-  // 遗：20%血量触发"遗憾合体"剧情（TODO: 暂未实现，仅占位）
+  // 遗：20%血量触发假撤退 → 憾遗合体
   if (bossConfig && bossConfig.name==='遗' && !bossState._fusionTriggered) {
     const newHP = bossState.hp - Math.floor(dmg * (multiplier || 1));
     if (newHP <= bossState.maxHP * 0.2) {
       bossState.hp = Math.floor(bossState.maxHP * 0.2);
       bossState._fusionTriggered = true;
-      bossState._hurtTimer = 0.4;
-      // TODO: 遗憾合体演出 — 遗+憾二字融合，切换BGM，进入P3阶段
-      // 目前仅特效占位，Boss继续承受伤害直到0HP被击败
-      shakeAmount = 30;
+      bossState._fusionPending = true; // 防止DEFEATED阶段清除bossActive
+      bossState.phase = BOSS_PHASE.DEFEATED;
+      bossState.timer = 0;
+      bossProjectiles = [];
+      bossState._afterimages = [];
+      bossState._burstBombs = [];
+      bossState._gravityActive = false;
+      bossState._heartLock = null;
+      shakeAmount = 10;
+      if (typeof Sound !== 'undefined' && Sound.setBGMIntensity) Sound.setBGMIntensity(0);
+      // 粒子 — 遗的部件飘散（假死）
       const cx = W*0.5, cy = H*0.2;
-      for (let i = 0; i < 50; i++) {
-        const p = new HitParticle(cx + (Math.random()-0.5)*150, cy + (Math.random()-0.5)*80, '#ffdd44', '◆');
-        p.vx = (Math.random()-0.5)*6; p.vy = (Math.random()-0.5)*6;
-        p.size = 5+Math.random()*12; p.life = 30+Math.random()*40;
+      for (let i = 0; i < 40; i++) {
+        const p = new HitParticle(cx + (Math.random()-0.5)*120, cy + (Math.random()-0.5)*60, '#ffdd44', '·');
+        p.vx = (Math.random()-0.5)*3; p.vy = (Math.random()-0.5)*3 - 1;
+        p.size = 3+Math.random()*8; p.life = 25+Math.random()*35;
         particles.push(p);
       }
-      Sound.anomaly();
-      // 不做任何战力惩罚，玩家继续输出即可击败Boss
+      // 1.5秒后零警觉 → 2秒后憾冲入合体
+      setTimeout(() => {
+        if (typeof Dialogue !== 'undefined') {
+          Dialogue.show({
+            mode:'shake', speaker:'零',
+            text:'等等……不对。那个波形——它没有消失。它——',
+            speed:50
+          });
+        }
+      }, 1500);
+      setTimeout(() => {
+        if (typeof Dialogue !== 'undefined') Dialogue.hide();
+        triggerRegretFusion();
+      }, 2800);
+      return true;
     }
   }
 
@@ -1210,4 +1240,392 @@ function defeatBoss() {
   const cx=W*0.5,cy=H*0.2;
   for(let i=0;i<100;i++) particles.push(new HitParticle(cx,cy,'#ffcc88','·'));
   Sound.victory();
+}
+
+/* ═══════════════ §K 遗憾合体·溯洄 — 剧情演出 ═══════════════
+ *
+ * 触发：遗HP≤20%
+ * 阶段：凝时 → 溯洄 → 碎忆 → 白屏 → 剧情推进
+ * 接管全屏渲染，冻结战斗，摧毁全部装备
+ */
+
+// 遗憾合体阶段：憾撞入→融合→静默→白屏死字→台词
+const FUSION = { CONVERGE:0, FREEZE:1, PAUSE:2, RECKONING:3, DIALOGUE:4, DONE:5 };
+let fusionActive = false;
+let fusionState = null;
+
+function triggerRegretFusion() {
+  fusionActive = true;
+  // 捕获遗部件当前漂浮位置（假撤退后上飘了约2.8秒）
+  const yiX = bossState ? (bossState.left.x + bossState.right.x) * 0.5 : W*0.5;
+  const yiY = bossState ? (bossState.left.y + bossState.right.y) * 0.5 - 30 : H*0.3;
+  // 冻结Boss战斗
+  bossActive = false; bossState = null; bossProjectiles = [];
+  if (typeof Sound !== 'undefined' && Sound.setBGMIntensity) Sound.setBGMIntensity(0);
+  if (typeof lastBossKey !== 'undefined') lastBossKey = null;
+
+  // 快照当前战场文字
+  const frozen = [];
+  if (typeof battleWords !== 'undefined') {
+    battleWords.forEach(bw => {
+      if (bw.alive && bw.cat !== '乱') {
+        frozen.push({ x:bw.x, y:bw.y, vx:bw.vx*0.1, vy:bw.vy*0.1, text:bw.text, size:bw.size||20, alpha:bw.alpha||0.8 });
+      }
+    });
+    battleWords = [];
+  }
+
+  fusionState = {
+    phase: FUSION.CONVERGE,
+    timer: 0,
+    // 憾撞入
+    hanX: -180, hanY: H*0.30,
+    yiX: yiX, yiY: yiY,
+    targetCX: W*0.5, targetCY: H*0.38,
+    shockwaveR: 0,
+    shockwaveMax: Math.max(W,H) * 0.8,
+    vignetteAlpha: 0,
+    // 文字
+    frozenWords: frozen,
+    playerCX: W*0.5, playerCY: H*0.75,
+    // 白屏+死字
+    whiteAlpha: 0,
+    grayAlpha: 0,
+    deathChars: [],
+    deathTimer: 0,
+    shakeBase: 0,
+    equipmentShattered: false,
+    // 台词
+    dialogueDone: false,
+  };
+}
+
+function updateFusion(dt) {
+  if (!fusionActive || !fusionState) return;
+  const fs = fusionState;
+  fs.timer += dt;
+
+  switch (fs.phase) {
+
+    case FUSION.CONVERGE: {
+      // 憾从左侧猛冲撞向漂浮的遗
+      const t = Math.min(1, fs.timer / 1.2); // 1.2秒快速冲入
+      const eased = 1 - Math.pow(1-t, 3);    // ease-out — 越靠近越减速然后撞击
+      // 憾：从左外高速冲入
+      fs.hanX = -180 + (fs.targetCX - 20) * eased;
+      fs.hanY = fs.targetCY - 10 + Math.sin(t*Math.PI*0.6) * 50;
+      // 遗：在漂浮位置微微晃动（等待撞击）
+      fs.yiX += (fs.targetCX + 25 - fs.yiX) * 0.03;
+      fs.yiY += (fs.targetCY - fs.yiY) * 0.02;
+
+      // 憾的拖尾粒子（高速冲撞感）
+      if (t < 0.9 && Math.random() < 0.7) {
+        const tp = new HitParticle(fs.hanX + 40, fs.hanY, '#ff5544', '·');
+        tp.vx = (Math.random()-0.5)*2; tp.vy = (Math.random()-0.5)*2;
+        tp.size = 4+Math.random()*8; tp.life = 12+Math.random()*18;
+        particles.push(tp);
+      }
+
+      if (t >= 1) {
+        fs.phase = FUSION.FREEZE;
+        fs.timer = 0;
+        fs.shockwaveR = 20;
+        fs.vignetteAlpha = 0;
+        // 憾撞遗 → 碰撞粒子爆发
+        for (let i=0;i<80;i++) {
+          const a=Math.random()*Math.PI*2;
+          const p=new HitParticle(fs.targetCX,fs.targetCY,i%2?'#ff5544':'#ffdd44','·');
+          p.vx=Math.cos(a)*(3+Math.random()*10); p.vy=Math.sin(a)*(3+Math.random()*10);
+          p.size=3+Math.random()*8; p.life=20+Math.random()*35;
+          particles.push(p);
+        }
+        shakeAmount = 30;
+        Sound.anomaly();
+        Sound.stun();
+      }
+      break;
+    }
+
+    case FUSION.FREEZE: {
+      // 冲击波扩散
+      fs.shockwaveR += (fs.shockwaveMax - fs.shockwaveR) * 0.08;
+      // 暗角渐深
+      fs.vignetteAlpha = Math.min(0.65, fs.timer / 1.8);
+      // 冻结的文字微微颤动
+      fs.frozenWords.forEach(fw => {
+        fw.x += (Math.random()-0.5)*0.3;
+        fw.y += (Math.random()-0.5)*0.3;
+      });
+
+      if (fs.timer > 2.0) {
+        fs.phase = FUSION.PAUSE;
+        fs.timer = 0;
+      }
+      break;
+    }
+
+    case FUSION.PAUSE: {
+      // 2秒静默：遗憾二字悬浮，文字微颤，玩家感受这一刻
+      fs.vignetteAlpha = 0.65;
+      fs.frozenWords.forEach(fw => {
+        fw.x += (Math.random()-0.5)*0.15;
+        fw.y += (Math.random()-0.5)*0.15;
+      });
+
+      if (fs.timer > 2.0) {
+        fs.phase = FUSION.RECKONING;
+        fs.timer = 0;
+        fs.whiteAlpha = 0;
+        fs.grayAlpha = 0;
+        fs.shakeBase = 1;
+      }
+      break;
+    }
+
+    case FUSION.RECKONING: {
+      const progress = fs.timer / 8.0; // 8秒慢节奏
+
+      // 白屏缓慢渗入（0→3s到达0.7，之后保持）
+      fs.whiteAlpha = Math.min(0.75, fs.timer / 4.0);
+      // 灰幕叠加
+      fs.grayAlpha = Math.min(0.55, progress * 0.8);
+
+      // 文字缓慢飘向玩家（0→6秒完成）
+      if (fs.timer < 6.0) {
+        const pullStrength = (fs.timer / 6.0) * 4;
+        fs.frozenWords.forEach(fw => {
+          const dx = fs.playerCX - fw.x;
+          const dy = fs.playerCY - fw.y;
+          const dist = Math.sqrt(dx*dx+dy*dy) + 1;
+          const force = pullStrength * 60 / dist;
+          fw.x += dx * force * dt;
+          fw.y += dy * force * dt;
+          fw.alpha = Math.max(0.15, 0.8 - (fs.timer/6.0)*0.7);
+        });
+      } else if (fs.timer >= 6.0 && fs.frozenWords.length > 0) {
+        // 6秒后文字全部消散
+        fs.frozenWords = [];
+      }
+
+      // 窗口抖动逐渐加剧（4→8秒最剧烈）
+      if (fs.timer > 3.0) {
+        const shakeProg = (fs.timer - 3.0) / 5.0;
+        fs.shakeBase = 1 + shakeProg * 26;
+        shakeAmount = Math.max(shakeAmount, fs.shakeBase + Math.sin(fs.timer*25)*shakeProg*10);
+      }
+
+      // "悔"字涌现（0→8秒全程，先稀后密）
+      fs.deathTimer += dt;
+      const deathInterval = 0.5 - progress * 0.38; // 0.5s→0.12s
+      if (fs.deathTimer > Math.max(0.08, deathInterval)) {
+        fs.deathTimer = 0;
+        const dx = Math.random()*W*0.85 + W*0.075;
+        const dy = Math.random()*H*0.65 + H*0.1;
+        fs.deathChars.push({
+          x:dx, y:dy, alpha:0, targetAlpha:0.25+progress*0.7,
+          size:28+Math.random()*55,
+        });
+        if (fs.deathChars.length > 30) fs.deathChars.shift();
+      }
+      fs.deathChars.forEach(dc => {
+        dc.alpha += (dc.targetAlpha - dc.alpha) * 0.10;
+      });
+
+      // 3.5秒时男主难受的台词（自动继续）
+      if (fs.timer > 3.5 && !fs._protagonistLineDone) {
+        fs._protagonistLineDone = true;
+        if (typeof Dialogue !== 'undefined') {
+          Dialogue.show({
+            mode:'tremble', speaker:'主角',
+            text:'这就是……遗憾的重量吗……',
+            speed:55, locked:true,
+            onComplete() {
+              setTimeout(() => { if (typeof Dialogue !== 'undefined') Dialogue.hide(); }, 1800);
+            }
+          });
+        }
+      }
+
+      // 5秒时震碎装备
+      if (fs.timer > 5.0 && !fs.equipmentShattered) {
+        fs.equipmentShattered = true;
+        shatterAllEquipmentSilent();
+        if (typeof Sound !== 'undefined' && Sound.stopBGM) Sound.stopBGM(2.0);
+      }
+
+      // 8秒后进入台词
+      if (fs.timer > 8.0) {
+        fs.phase = FUSION.DIALOGUE;
+        fs.timer = 0;
+        fs.frozenWords = [];
+        fs.deathChars = [];
+        shakeAmount = 30;
+      }
+      break;
+    }
+
+    case FUSION.DIALOGUE: {
+      // 白屏保持，抖动衰减
+      fs.whiteAlpha = Math.min(1, 0.75 + fs.timer / 1.5);
+      shakeAmount = Math.max(0, 30 * (1 - fs.timer/2.0));
+      // 台词出现，等玩家点击
+      if (!fs.dialogueDone) {
+        fs.dialogueDone = true;
+        if (typeof Dialogue !== 'undefined') {
+          Dialogue.show({
+            mode:'float', speaker:'零',
+            text:'……怎么能在这里倒下。',
+            speed:50,
+            onComplete() {
+              fs.phase = FUSION.DONE;
+              fs.timer = 0;
+            }
+          });
+        }
+      }
+      break;
+    }
+
+    case FUSION.DONE:
+      // 等待外部处理（safe house过渡）
+      break;
+  }
+}
+
+/** 静默震碎装备（无对话、无音效，用于融合演出中） */
+function shatterAllEquipmentSilent() {
+  // 碎片粒子
+  const cx=W*0.5, cy=H*0.45;
+  for (let i=0;i<100;i++) {
+    const a=Math.random()*Math.PI*2;
+    const spd=3+Math.random()*12;
+    const p=new HitParticle(cx+(Math.random()-0.5)*120,cy+(Math.random()-0.5)*80,'#ffdd44','◆');
+    p.vx=Math.cos(a)*spd; p.vy=Math.sin(a)*spd;
+    p.size=5+Math.random()*16; p.life=30+Math.random()*50; p.gravity=0.04;
+    particles.push(p);
+  }
+  // 重置装备为基础
+  if (typeof playerWeapon !== 'undefined') playerWeapon = EQUIPMENT.weapons['beginner_brush'];
+  if (typeof playerArmor !== 'undefined') {
+    playerArmor = EQUIPMENT.armors['thin_silk'];
+    playerDefense = playerArmor.defense || 0;
+  }
+  if (typeof playerSkill !== 'undefined') playerSkill = EQUIPMENT.skills['concentration'];
+  if (typeof skillState !== 'undefined') skillState = { collected:[], chargeLevel:0, ready:false };
+  if (typeof unlockedWeapons !== 'undefined') unlockedWeapons = new Set(['beginner_brush']);
+  if (typeof nextAttackBoost !== 'undefined') nextAttackBoost = false;
+  if (typeof updatePlayerUI === 'function') updatePlayerUI();
+  if (typeof updateSkillUI === 'function') updateSkillUI();
+  if (typeof hasShield !== 'undefined') { hasShield = false; shieldHP = 0; }
+}
+
+function drawFusion(ctx) {
+  if (!fusionActive || !fusionState) return;
+  const fs = fusionState;
+
+  if (fs.phase === FUSION.CONVERGE) {
+    // 憾从左侧猛冲（大尺寸 + 拖尾感），遗在画面中漂浮等待
+    const hanSz = 90 + Math.sin(fs.timer*8) * 5; // 憾微微脉动
+    const yiSz = 70;
+    ctx.save();
+    // 憾 — 红色，大号，从左侧冲入
+    ctx.shadowColor='#cc3322'; ctx.shadowBlur=35;
+    ctx.fillStyle='#ff5544';
+    ctx.font=`bold ${hanSz}px "Noto Serif SC","SimSun",serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('憾',fs.hanX,fs.hanY);
+    // 遗 — 金色，在画面中漂浮
+    ctx.shadowColor='#ddaa22'; ctx.shadowBlur=20;
+    ctx.fillStyle='#ffcc44';
+    ctx.font=`bold ${yiSz}px "Noto Serif SC","SimSun",serif`;
+    ctx.fillText('遗',fs.yiX,fs.yiY);
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+
+  // FREEZE / PAUSE：遗憾融合 + 冲击波 + 暗角
+  if (fs.phase === FUSION.FREEZE || fs.phase === FUSION.PAUSE) {
+    // 中央"遗憾"
+    const pulse=1+Math.sin(fs.timer*2.5)*0.06;
+    const sz=110*pulse;
+    ctx.save();
+    ctx.shadowColor='#ffffff'; ctx.shadowBlur=40;
+    ctx.fillStyle='#eeddcc';
+    ctx.font=`bold ${sz}px "Noto Serif SC","SimSun",serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('遗憾',fs.targetCX,fs.targetCY);
+    ctx.shadowBlur=0;
+    ctx.restore();
+
+    // 冲击波环
+    if (fs.shockwaveR > 0 && fs.shockwaveR < fs.shockwaveMax) {
+      ctx.save();
+      const alpha=Math.max(0,1-fs.shockwaveR/fs.shockwaveMax)*0.5;
+      ctx.strokeStyle=`rgba(200,200,200,${alpha})`;
+      ctx.lineWidth=3*(1-fs.shockwaveR/fs.shockwaveMax);
+      ctx.beginPath(); ctx.arc(fs.targetCX,fs.targetCY,fs.shockwaveR,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+
+    // 径向暗角
+    if (fs.vignetteAlpha > 0) {
+      const grad=ctx.createRadialGradient(fs.targetCX,fs.targetCY,H*0.15,fs.targetCX,fs.targetCY,Math.max(W,H)*0.9);
+      grad.addColorStop(0,`rgba(20,15,10,0)`);
+      grad.addColorStop(0.35,`rgba(10,5,0,${fs.vignetteAlpha*0.3})`);
+      grad.addColorStop(1,`rgba(0,0,0,${fs.vignetteAlpha})`);
+      ctx.save();
+      ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+  }
+
+  // 冻结文字（FREEZE / PAUSE / RECKONING前6秒）
+  if ((fs.phase === FUSION.FREEZE || fs.phase === FUSION.PAUSE || fs.phase === FUSION.RECKONING) && fs.frozenWords.length > 0) {
+    fs.frozenWords.forEach(fw => {
+      if (fw.alpha < 0.03) return;
+      ctx.save();
+      ctx.globalAlpha = fw.alpha;
+      ctx.fillStyle = '#ccbbaa';
+      ctx.font = `${fw.size}px "Noto Serif SC","SimSun",serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(fw.text, fw.x, fw.y);
+      ctx.restore();
+    });
+  }
+
+  // RECKONING：白屏 + 灰幕 + 悔字
+  if (fs.phase === FUSION.RECKONING) {
+    // 白屏
+    if (fs.whiteAlpha > 0) {
+      ctx.save();
+      ctx.fillStyle=`rgba(240,240,245,${fs.whiteAlpha})`;
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+    // 灰幕叠加
+    if (fs.grayAlpha > 0) {
+      ctx.save();
+      ctx.fillStyle=`rgba(20,15,20,${fs.grayAlpha})`;
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+    // 悔字
+    fs.deathChars.forEach(dc => {
+      ctx.save();
+      ctx.globalAlpha=dc.alpha;
+      ctx.fillStyle='#884444';
+      ctx.font=`bold ${dc.size}px "Noto Serif SC","SimSun",serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('悔',dc.x,dc.y);
+      ctx.restore();
+    });
+  }
+
+  // DIALOGUE：白屏保持
+  if (fs.phase === FUSION.DIALOGUE && fs.whiteAlpha > 0) {
+    ctx.save();
+    ctx.fillStyle=`rgba(240,240,245,${fs.whiteAlpha})`;
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
 }

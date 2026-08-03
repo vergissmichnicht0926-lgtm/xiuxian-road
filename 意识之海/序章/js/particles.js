@@ -206,6 +206,15 @@ class BattleWord {
     this.y+=this.vy*speedMul+Math.cos(this.phase*1.3)*this.wobbleAmp*0.4;
     const m=40;if(this.x<m){this.x=m;this.vx*=-1;}if(this.x>W-m){this.x=W-m;this.vx*=-1;}
     if(this.y<m+60){this.y=m+60;this.vy*=-1;}if(this.y>H-m-60){this.y=H-m-60;this.vy*=-1;}
+    // 伪装干扰字鼠标追踪
+    if(this.cat==='乱' && this._trackMouse && typeof mx!=='undefined' && typeof my!=='undefined'){
+      const dx = mx - this.x, dy = my - this.y;
+      const dist = Math.sqrt(dx*dx+dy*dy) + 0.1;
+      const strength = this._trackMouse * 0.04;
+      this.vx += (dx/dist) * strength; this.vy += (dy/dist) * strength;
+      this.vx = Math.max(-2.0, Math.min(2.0, this.vx));
+      this.vy = Math.max(-1.5, Math.min(1.5, this.vy));
+    }
     if(Math.random()<0.004){this.vx+=(Math.random()-0.5)*0.5;this.vy+=(Math.random()-0.5)*0.3;this.vx=Math.max(-1.5,Math.min(1.5,this.vx));this.vy=Math.max(-1,Math.min(1,this.vy));}
     this.alpha+=(this.targetAlpha-this.alpha)*0.08;
     const ts=this.cat==='乱'?22:28+Math.random()*4;this.size+=(ts+this.glowExtra-this.size)*0.1;
@@ -215,7 +224,11 @@ class BattleWord {
     // 优先从装备配置获取颜色（支持动态词元池）
     const catData=(typeof getCatConfig==='function')?getCatConfig(this.cat):WORD_LIBRARY[this.cat];
     let clr,glow;
-    if(this.cat==='乱'){clr='#999999';glow='#555555';}
+    if(this.cat==='乱'){
+      // 伪装字：使用伪装目标类别的颜色
+      if(this._noiseCatColor){clr=this._noiseCatColor;glow=this._noiseCatGlow||'#555555';}
+      else{clr='#999999';glow='#555555';}
+    }
     else if(catData){clr=catData.color;glow=catData.glow;}
     else{clr='#ccc';glow='#666';}
     ctx.save();ctx.globalAlpha=Math.min(1,this.alpha);

@@ -27,22 +27,22 @@ const EQUIPMENT = {
     'beginner_brush': {
       id:'beginner_brush', name:'初学者之笔',
       words:['斩','破','裂','刺','断'], color:'#ff6644', glow:'#cc3311',
-      damage:10, wordCount:5, desc:'UCRB标准配发的词元笔，攻字5枚，稳定均衡。'
+      damage:8, wordCount:5, desc:'UCRB标准配发的词元笔，攻字5枚，稳定均衡。'
     },
     'star_shatter': {
       id:'star_shatter', name:'碎星之刃',
       words:['灭','碎','崩'], color:'#ff8866', glow:'#dd4422',
-      damage:18, wordCount:3, desc:'攻字仅3枚，但一击碎星——重锤低速高伤。'
+      damage:12, wordCount:4, desc:'攻字仅4枚，但一击碎星——重锤低速高伤。'
     },
     'blaze_heaven': {
       id:'blaze_heaven', name:'焚天',
       words:['焚','爆','燃','灼','炎','烧','焰'], color:'#ff7744', glow:'#ee5522',
-      damage:6, wordCount:7, splash:true, desc:'攻字7枚满屏烈焰，低伤溅射，高频连击。'
+      damage:5, wordCount:7, blaze:true, desc:'攻字7枚满屏烈焰，低伤高频，「炎」debuff灼烧。'
     },
     'frost_verse': {
       id:'frost_verse', name:'霜序',
       words:['刺','穿','凝','碎','寒','封'], color:'#99ccff', glow:'#4488bb',
-      damage:9, wordCount:6, slow:true, desc:'攻字6枚凝寒而生，附带减速，控场致胜。'
+      damage:7, wordCount:6, slow:true, desc:'攻字6枚凝寒而生，附带减速，控场致胜。'
     }
   },
   // ── 防具：words=词元池, wordCount=战场上限, defense=减伤, shieldPerWord=每字盾量, maxShield=盾量上限 ──
@@ -50,20 +50,20 @@ const EQUIPMENT = {
     'thin_silk': {
       id:'thin_silk', name:'薄绢',
       words:['盾','御','守','护'], color:'#66aaff', glow:'#3366cc',
-      defense:2, shieldPerWord:2, maxShield:10, wordCount:4,
-      desc:'轻薄的意识纤维编织，防字4枚频繁刷新，减伤2，每字2盾，上限10。'
+      defense:1, shieldPerWord:3, maxShield:15, wordCount:4,
+      desc:'轻薄的意识纤维编织，防字4枚频繁刷新，减伤1，每字3盾，上限15。'
     },
     'mind_wall': {
       id:'mind_wall', name:'意识壁垒',
       words:['壁'], color:'#5588dd', glow:'#2255aa',
-      defense:6, shieldPerWord:5, maxShield:25, wordCount:1,
-      desc:'防字仅1枚却坚不可摧，减伤6，每字5盾，上限25——重甲一诺万钧。'
+      defense:4, shieldPerWord:8, maxShield:30, wordCount:1,
+      desc:'防字仅1枚却坚不可摧，减伤4，每字8盾，上限30——重甲一诺万钧。'
     },
     'light_veil': {
       id:'light_veil', name:'流光之纱',
       words:['闪','护','避'], color:'#88ccff', glow:'#4488cc',
-      defense:3, shieldPerWord:2, maxShield:6, wordCount:3, dodgeChance:0.3,
-      desc:'防字3枚如流光掠影，减伤3，每字2盾，上限6，30%概率完全闪避。'
+      defense:2, shieldPerWord:2, maxShield:8, wordCount:3, dodgeChance:0.20,
+      desc:'防字3枚如流光掠影，减伤2，每字2盾，上限8，20%概率完全闪避。'
     }
   },
   skills: {
@@ -91,11 +91,25 @@ const EQUIPMENT = {
 // 干扰虚词
 const NOISE_WORDS = ['的','了','吗','吧','呢','啊','么','乎','矣','兮'];
 
+// 伪装干扰词库 — 生僻字，伪装成攻/防/愈的外观，避开已有和未来装备字
+const NOISE_FAKE_ATTACK  = ['刳','剚','劓','剡','劖','剜'];
+const NOISE_FAKE_DEFENSE = ['阢','陴','堞','墉'];
+const NOISE_FAKE_HEAL    = ['瘳','瘵','瘥','疕'];
+
+// 威胁等级参数
+const THREAT = {
+  BASE: [0, 2, 4],            // 基础值（按难度）
+  PER_LAYER: 0.5,             // 每深入一层增加值
+  EVENT_FORCE: +1,            // 强行打开
+  EVENT_SKIP: -1,             // 绕过去
+  SAFE_HOUSE_RESET: true,     // 安全屋重置为基础值
+};
+
 // 难度配置
 const DIFFICULTY = [
-  { name:'浅层潜航', enemyHP:40, enemyInterval:7.0, noiseRate:0.06, speed:0.5, noiseLife:0.12, enemyDmg:[3,6] },
-  { name:'标准潜航', enemyHP:55, enemyInterval:5.5, noiseRate:0.12, speed:0.8, noiseLife:0.25, enemyDmg:[5,10] },
-  { name:'深层潜航', enemyHP:70, enemyInterval:4.0, noiseRate:0.20, speed:1.1, noiseLife:0.4,  enemyDmg:[7,14] }
+  { name:'浅层潜航', enemyHP:45, enemyInterval:7.0, noiseRate:0.08, speed:0.5, noiseLife:0.12, enemyDmg:[3,5] },
+  { name:'标准潜航', enemyHP:60, enemyInterval:5.5, noiseRate:0.15, speed:0.8, noiseLife:0.25, enemyDmg:[5,8] },
+  { name:'深层潜航', enemyHP:75, enemyInterval:4.0, noiseRate:0.22, speed:1.1, noiseLife:0.4,  enemyDmg:[7,11] }
 ];
 
 // 导师角色信息
