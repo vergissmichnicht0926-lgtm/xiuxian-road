@@ -1,0 +1,340 @@
+/* ═══════════════════ 意识之海 · 序章 · 样式 ═══════════════════ */
+
+/* ── 基础 ── */
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; overflow:hidden; background:#000;
+  font-family:"Noto Serif SC","Source Han Serif SC","SimSun",serif;
+  user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
+canvas { display:block; position:absolute; top:0; left:0; z-index:10; transition:transform 0.5s ease-out; }
+
+/* ── 主菜单 ── */
+#main-menu {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:200;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center,#0a0a20 0%,#020208 100%);
+  transition:opacity 0.6s,visibility 0.6s;
+}
+#main-menu.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+#menu-title {
+  color:rgba(180,200,240,0.8); font-size:32px; letter-spacing:0.5em;
+  margin-bottom:6px;
+}
+#menu-subtitle {
+  color:rgba(140,160,200,0.35); font-size:13px; letter-spacing:0.3em;
+  margin-bottom:56px;
+}
+.menu-btn {
+  width:200px; padding:14px 0; margin:8px 0;
+  background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.1);
+  color:rgba(200,220,240,0.6); font-size:16px; letter-spacing:0.25em;
+  border-radius:4px; cursor:pointer; font-family:inherit;
+  transition:all 0.4s; text-align:center;
+}
+.menu-btn:hover {
+  background:rgba(100,160,220,0.1); border-color:rgba(100,160,220,0.4);
+  color:#c8ddf8; transform:scale(1.03);
+}
+.menu-btn.disabled {
+  color:rgba(200,220,240,0.2); border-color:rgba(255,255,255,0.04);
+  cursor:not-allowed; pointer-events:none;
+}
+
+/* ── 难度选择 ── */
+#difficulty-screen {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:180;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center,#0a0a20 0%,#020208 100%);
+  transition:opacity 0.5s,visibility 0.5s;
+}
+#difficulty-screen.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+#diff-title {
+  color:rgba(180,200,240,0.7); font-size:18px; letter-spacing:0.4em;
+  margin-bottom:40px;
+}
+.diff-btn {
+  width:240px; padding:16px 0; margin:8px 0;
+  background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.1);
+  color:rgba(200,220,240,0.7); font-size:16px; letter-spacing:0.25em;
+  border-radius:4px; cursor:pointer; font-family:inherit;
+  transition:all 0.4s; text-align:center;
+}
+.diff-btn:hover {
+  background:rgba(100,160,220,0.1); border-color:rgba(100,160,220,0.4);
+  color:#c8ddf8; transform:scale(1.03);
+}
+.diff-btn .diff-label { font-size:11px; opacity:0.5; letter-spacing:0.15em; margin-top:4px; display:block; }
+.back-link {
+  margin-top:32px; color:rgba(160,180,210,0.3); font-size:13px;
+  letter-spacing:0.15em; cursor:pointer; transition:color 0.3s;
+}
+.back-link:hover { color:rgba(180,200,240,0.6); }
+
+
+/* ═══════════════════ 对话演出系统 — 通用可复用模板 ═══════════════════ */
+
+/* 对话容器 */
+#dialogue-layer {
+  position:fixed; bottom:0; left:0; width:100%; z-index:50;
+  pointer-events:none; display:flex; flex-direction:column; align-items:center;
+  padding-bottom:30px;
+}
+
+/* 模式1: 浮现 — 高级存在说话，文字从上方缓缓凝聚 */
+.dialogue-float {
+  opacity:0; transform:translateY(20px); transition:all 0.6s cubic-bezier(0.22,0.61,0.36,1);
+}
+.dialogue-float.active { opacity:1; transform:translateY(0); }
+.dialogue-float .d-speaker {
+  color:rgba(160,200,255,0.8); font-size:14px; letter-spacing:0.3em;
+  text-align:center; margin-bottom:10px;
+}
+.dialogue-float .d-text {
+  color:rgba(220,230,255,0.85); font-size:18px; letter-spacing:0.12em;
+  text-align:center; max-width:600px; line-height:1.8;
+  text-shadow:0 0 30px rgba(140,180,240,0.3);
+}
+
+/* 模式2: 气泡 — 普通人，漫画风格 */
+.dialogue-bubble {
+  opacity:0; transform:translateY(10px); transition:all 0.3s ease-out;
+}
+.dialogue-bubble.active { opacity:1; transform:translateY(0); }
+.dialogue-bubble .d-bubble-box {
+  background:rgba(20,25,40,0.92); border:2px solid rgba(140,160,200,0.3);
+  border-radius:12px; padding:12px 20px; max-width:500px; position:relative;
+}
+.dialogue-bubble .d-speaker {
+  color:rgba(180,200,230,0.7); font-size:12px; letter-spacing:0.2em; margin-bottom:4px;
+}
+.dialogue-bubble .d-text {
+  color:rgba(210,220,235,0.8); font-size:16px; letter-spacing:0.08em; line-height:1.6;
+}
+
+/* 模式3: 抖动 — 激动/紧急 */
+.dialogue-shake {
+  opacity:0; transition:opacity 0.2s;
+}
+.dialogue-shake.active { opacity:1; }
+.dialogue-shake .d-speaker {
+  color:rgba(255,180,140,0.9); font-size:15px; letter-spacing:0.3em;
+  text-align:center; margin-bottom:8px;
+}
+.dialogue-shake .d-text {
+  color:rgba(255,200,160,0.9); font-size:20px; letter-spacing:0.15em;
+  text-align:center; max-width:600px; line-height:1.8;
+  animation:textShake 0.08s infinite;
+  text-shadow:0 0 20px rgba(255,120,60,0.4);
+}
+
+/* 模式4: 干净 — 主角说话，无框无光 */
+.dialogue-plain {
+  opacity:0; transition:all 0.4s;
+}
+.dialogue-plain.active { opacity:1; }
+.dialogue-plain .d-text {
+  color:rgba(210,220,240,0.75); font-size:17px; letter-spacing:0.1em;
+  text-align:center; max-width:600px; line-height:1.8;
+}
+
+/* 模式5: 低语 — 细微/内心 */
+.dialogue-whisper {
+  opacity:0; transition:all 0.8s;
+}
+.dialogue-whisper.active { opacity:1; }
+.dialogue-whisper .d-text {
+  color:rgba(180,190,210,0.5); font-size:14px; letter-spacing:0.2em;
+  text-align:center; font-style:italic; max-width:500px; line-height:1.6;
+}
+
+/* 模式6: 蓝色颤抖 — 恐惧/不安，微小幅度的冷色震颤 */
+.dialogue-tremble {
+  opacity:0; transition:opacity 0.3s;
+}
+.dialogue-tremble.active { opacity:1; }
+.dialogue-tremble .d-speaker {
+  color:rgba(140,185,225,0.8); font-size:14px; letter-spacing:0.3em;
+  text-align:center; margin-bottom:10px;
+}
+.dialogue-tremble .d-text {
+  color:rgba(160,200,235,0.85); font-size:19px; letter-spacing:0.1em;
+  text-align:center; max-width:600px; line-height:1.8;
+  animation:textTremble 0.06s infinite;
+  text-shadow:0 0 22px rgba(100,150,220,0.45);
+}
+
+/* 模式7: 红色跳跃 — 开心/兴奋（预留，暂未启用） */
+.dialogue-bounce {
+  opacity:0; transition:opacity 0.3s;
+}
+.dialogue-bounce.active { opacity:1; }
+.dialogue-bounce .d-speaker {
+  color:rgba(255,160,140,0.85); font-size:14px; letter-spacing:0.3em;
+  text-align:center; margin-bottom:8px;
+}
+.dialogue-bounce .d-text {
+  color:rgba(255,180,150,0.9); font-size:19px; letter-spacing:0.1em;
+  text-align:center; max-width:600px; line-height:1.8;
+  animation:textBounce 0.25s infinite;
+  text-shadow:0 0 16px rgba(255,100,70,0.35);
+}
+
+/* 对话提示 */
+#d-continue {
+  color:rgba(200,200,220,0.35); font-size:11px; letter-spacing:0.2em;
+  text-align:center; margin-top:16px; transition:opacity 0.5s;
+  animation:blinkHint 1.8s infinite;
+}
+
+@keyframes textShake {
+  0%,100% { transform:translate(0,0); }
+  25% { transform:translate(-1.5px,0.8px); }
+  50% { transform:translate(1.2px,-0.5px); }
+  75% { transform:translate(-0.8px,-1px); }
+}
+@keyframes textTremble {
+  0%,100% { transform:translate(0,0); }
+  25% { transform:translate(-0.8px,1.2px); }
+  50% { transform:translate(0.6px,-0.8px); }
+  75% { transform:translate(-0.5px,-0.6px); }
+}
+@keyframes textBounce {
+  0%,100% { transform:translateY(0); }
+  30% { transform:translateY(-4px); }
+  60% { transform:translateY(-1.5px); }
+  80% { transform:translateY(-2.5px); }
+}
+@keyframes blinkHint {
+  0%,100% { opacity:0.25; }
+  50% { opacity:0.6; }
+}
+
+/* ── 战斗UI ── */
+#enemy-zone { position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none; z-index:10;
+  transition:opacity 0.6s; }
+#enemy-name { color:rgba(255,200,180,0.8); font-size:18px; letter-spacing:0.15em; }
+#enemy-hp-bar { width:200px; height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden; }
+#enemy-hp-fill { width:100%; height:100%; background:linear-gradient(90deg,#ff5544,#ff8866); border-radius:3px; transition:width 0.3s; }
+#enemy-timer { width:160px; height:4px; background:rgba(255,255,255,0.04); border-radius:2px; overflow:hidden; margin-top:2px; }
+#enemy-timer-fill { width:100%; height:100%; background:rgba(255,255,255,0.7); border-radius:2px; transition:width 0.1s linear; }
+#enemy-timer-fill.urgent { background:#ff4444; animation:pulse 0.5s infinite; }
+
+#player-zone { position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none; z-index:10; }
+#player-info { color:rgba(200,220,255,0.7); font-size:14px; letter-spacing:0.1em; }
+#player-hp-bar { width:180px; height:5px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden; }
+#player-hp-fill { width:100%; height:100%; background:linear-gradient(90deg,#44aacc,#66ddff); border-radius:3px; transition:width 0.4s; }
+#player-hp-fill.low { background:linear-gradient(90deg,#cc3333,#ff4444); animation:urgentPulse 0.8s infinite; }
+
+#stage-hint { position:fixed; top:105px; left:50%; transform:translateX(-50%);
+  color:rgba(200,200,220,0.45); font-size:13px; letter-spacing:0.15em;
+  pointer-events:none; z-index:10; transition:opacity 0.5s; text-align:center; }
+#stun-overlay { position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(255,0,0,0.06); pointer-events:none; z-index:20; opacity:0; transition:opacity 0.15s; }
+#stun-overlay.active { opacity:1; }
+#combo-display { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) translateY(-80px);
+  pointer-events:none; z-index:10; text-align:center; opacity:0; transition:opacity 0.3s; }
+#combo-display.show { opacity:1; }
+#combo-count { font-size:60px; font-weight:bold; letter-spacing:0.05em; }
+#combo-words { font-size:16px; letter-spacing:0.3em; margin-top:4px; }
+
+/* ── 章节卡片（开头/结局共用）── */
+#ending-overlay {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:190;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center,#060612 0%,#010108 100%);
+  pointer-events:none; opacity:0; transition:opacity 1s;
+}
+#ending-overlay.show { opacity:1; pointer-events:auto; }
+#ending-title { font-size:38px; font-weight:bold; letter-spacing:0.3em; color:rgba(180,200,230,0.8); }
+#ending-sub { font-size:15px; letter-spacing:0.2em; margin-top:14px; color:rgba(180,200,230,0.55); }
+#ending-hint { margin-top:56px; font-size:13px; letter-spacing:0.1em; color:rgba(180,190,210,0.3); animation:blinkHint 2s infinite; }
+#ending-btns { margin-top:30px; display:flex; gap:16px; pointer-events:auto; }
+.ending-btn { padding:10px 28px; background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.15); color:rgba(200,220,240,0.6);
+  font-size:14px; letter-spacing:0.2em; border-radius:4px; cursor:pointer; font-family:inherit;
+  transition:all 0.3s; }
+.ending-btn:hover { background:rgba(100,160,220,0.12); border-color:rgba(100,160,220,0.4); color:#d0e0f8; }
+
+/* ── 技能收集UI ── */
+#skill-display {
+  position:fixed; top:120px; left:50%; transform:translateX(-50%);
+  pointer-events:none; z-index:10; opacity:0; transition:opacity 0.3s;
+  text-align:center; letter-spacing:0.15em;
+}
+
+/* ── 囊字 ── */
+#pouch-btn {
+  position:fixed; bottom:90px; right:28px; z-index:30;
+  color:rgba(180,170,140,0.35); font-size:18px; letter-spacing:0.2em;
+  cursor:pointer; font-family:"Noto Serif SC","SimSun",serif;
+  transition:all 0.5s; pointer-events:auto;
+}
+#pouch-btn:hover, #pouch-btn.active {
+  color:rgba(220,200,150,0.8);
+  text-shadow:0 0 18px rgba(200,180,120,0.4);
+}
+
+/* ── 背包 ── */
+#backpack-overlay {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:55;
+  pointer-events:none; opacity:0; transition:opacity 0.4s;
+}
+#backpack-overlay.show { opacity:1; }
+#backpack-hint {
+  position:fixed; bottom:32px; left:50%; transform:translateX(-50%);
+  color:rgba(200,200,220,0.3); font-size:12px; letter-spacing:0.15em;
+  text-align:center; z-index:62;
+  transition:opacity 0.5s;
+}
+
+/* ── 战败画面 ── */
+#defeat-overlay {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:195;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center, rgba(20,2,2,0.92) 0%, rgba(5,1,1,0.97) 100%);
+  pointer-events:none; opacity:0; transition:opacity 1.5s ease-out;
+}
+#defeat-overlay.show { opacity:1; pointer-events:auto; animation:deathPulse 2.5s infinite; }
+#defeat-title {
+  font-size:36px; font-weight:bold; letter-spacing:0.4em;
+  color:rgba(255,120,100,0.75); margin-bottom:12px;
+  opacity:0; transform:translateY(-30px);
+  transition:all 0.8s 0.3s cubic-bezier(0.22,0.61,0.36,1);
+}
+#defeat-overlay.show #defeat-title { opacity:1; transform:translateY(0); }
+#defeat-sub {
+  font-size:14px; letter-spacing:0.2em;
+  color:rgba(255,150,130,0.4); margin-bottom:50px;
+  opacity:0; transform:translateY(-15px);
+  transition:all 0.8s 0.6s cubic-bezier(0.22,0.61,0.36,1);
+}
+#defeat-overlay.show #defeat-sub { opacity:1; transform:translateY(0); }
+#defeat-btns {
+  display:flex; gap:16px; opacity:0; transform:translateY(20px);
+  transition:all 0.6s 0.9s cubic-bezier(0.22,0.61,0.36,1);
+}
+#defeat-overlay.show #defeat-btns { opacity:1; transform:translateY(0); }
+
+@keyframes deathPulse {
+  0%,100% { box-shadow:inset 0 0 160px rgba(200,20,20,0.35); }
+  50% { box-shadow:inset 0 0 240px rgba(220,30,20,0.55); }
+}
+
+/* ── 存档提示 ── */
+#save-toast {
+  position:fixed; top:30px; right:30px; z-index:300;
+  color:rgba(180,220,200,0.5); font-size:12px; letter-spacing:0.2em;
+  pointer-events:none; opacity:0; transition:opacity 0.3s;
+  font-family:"Noto Serif SC","SimSun",serif;
+}
+#save-toast.show { opacity:1; }
+
+/* ── 存档信息（菜单内）── */
+#save-info {
+  color:rgba(160,180,200,0.25); font-size:11px; letter-spacing:0.15em;
+  margin-top:6px;
+}
+
+@keyframes pulse { 50% { opacity:0.4; } }
+@keyframes urgentPulse { 50% { box-shadow:0 0 20px rgba(255,0,0,0.4); } }

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>意识之海</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 主菜单 -->
+<div id="main-menu">
+  <div id="menu-title">意识之海</div>
+  <div id="menu-subtitle">文字即一切</div>
+  <div id="save-info"></div>
+  <div class="menu-btn" id="btn-new-game" onclick="showDifficulty()">新的游戏</div>
+  <div class="menu-btn" id="btn-continue" onclick="continueGame()">继续游戏</div>
+  <div class="menu-btn" id="btn-test" onclick="quickTestBoss()" style="font-size:14px;color:#ffaa44;border-color:#ffaa44;">⚡ 快速测试 · 遗Boss</div>
+</div>
+
+<!-- 难度选择 -->
+<div id="difficulty-screen" class="hidden">
+  <div id="diff-title">选择潜航深度</div>
+  <div class="diff-btn" onclick="selectDifficulty(0)">
+    浅层潜航<span class="diff-label">敌人较弱 · 适合初次体验</span>
+  </div>
+  <div class="diff-btn" onclick="selectDifficulty(1)">
+    标准潜航<span class="diff-label">均衡体验 · 推荐</span>
+  </div>
+  <div class="diff-btn" onclick="selectDifficulty(2)">
+    深层潜航<span class="diff-label">敌人较强 · 挑战自我</span>
+  </div>
+  <div class="back-link" onclick="backToMenu()">← 返回</div>
+</div>
+
+<!-- 画布 -->
+<canvas id="c"></canvas>
+
+<!-- 对话层 -->
+<div id="dialogue-layer">
+  <div id="dialogue-box"></div>
+  <div id="d-continue">点击继续</div>
+</div>
+
+<!-- 战斗UI -->
+<div id="enemy-zone" style="opacity:0;">
+  <div id="enemy-name"></div>
+  <div id="enemy-hp-bar"><div id="enemy-hp-fill"></div></div>
+  <div id="enemy-timer"><div id="enemy-timer-fill"></div></div>
+</div>
+<div id="stage-hint"></div>
+<div id="combo-display"><div id="combo-count"></div><div id="combo-words"></div></div>
+<div id="player-zone" style="opacity:0;">
+  <div id="player-info">潜航者 · 意识完整度 100%</div>
+  <div id="player-hp-bar"><div id="player-hp-fill"></div></div>
+</div>
+<div id="stun-overlay"></div>
+
+<!-- 技能收集UI -->
+<div id="skill-display"></div>
+
+<!-- 存档提示 -->
+<div id="save-toast">已存档</div>
+
+<!-- 囊字 -->
+<div id="pouch-btn">囊</div>
+
+<!-- 背包 -->
+<div id="backpack-overlay">
+  <div id="backpack-hint">点击文字查看详情 · 点击空白关闭 · Tab / ESC</div>
+</div>
+
+<!-- 结局 -->
+<div id="ending-overlay">
+  <div id="ending-title"></div>
+  <div id="ending-sub"></div>
+  <div id="ending-btns"></div>
+</div>
+
+<!-- 战败 -->
+<div id="defeat-overlay">
+  <div id="defeat-title">意识崩解</div>
+  <div id="defeat-sub">你的意识在深海中消散……</div>
+  <div id="defeat-btns">
+    <div class="ending-btn" onclick="restartFromDefeat()">重新挑战</div>
+    <div class="ending-btn" onclick="location.reload()" style="border-color:rgba(255,100,80,0.25);color:rgba(255,150,120,0.4);font-size:12px;">返回标题</div>
+  </div>
+</div>
+
+<!-- JS 按依赖顺序加载 -->
+<script src="js/config.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/dialogue.js"></script>
+<script src="js/cinematic.js"></script>
+<script src="js/projectile.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/boss.js"></script>
+<script src="js/map.js"></script>
+<script src="js/rooms.js"></script>
+<script src="js/tutorial.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

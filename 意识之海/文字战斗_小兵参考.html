@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>意识之海 · 文字决</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#06061a;
+    font-family:"Noto Serif SC","Source Han Serif SC","SimSun",serif;
+    user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
+  canvas { display:block; position:absolute; top:0; left:0; }
+
+  /* 顶部敌区 */
+  #enemy-zone { position:fixed; top:20px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none; z-index:10; }
+  #enemy-name { color:rgba(255,200,180,0.8); font-size:18px; letter-spacing:0.15em; }
+  #enemy-hp-bar { width:200px; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden; }
+  #enemy-hp-fill { width:100%; height:100%; background:linear-gradient(90deg,#ff5544,#ff8866); border-radius:3px; transition:width 0.3s; }
+  #enemy-timer { width:160px; height:4px; background:rgba(255,255,255,0.05); border-radius:2px; overflow:hidden; margin-top:2px; }
+  #enemy-timer-fill { width:100%; height:100%; background:rgba(255,255,255,0.7); border-radius:2px;
+    transition:width 0.1s linear; }
+  #enemy-timer-fill.urgent { background:#ff4444; animation:pulse 0.5s infinite; }
+
+  /* 底部玩家区 */
+  #player-zone { position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none; z-index:10; }
+  #player-info { color:rgba(200,220,255,0.7); font-size:14px; letter-spacing:0.1em; }
+  #player-hp-bar { width:180px; height:5px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden; }
+  #player-hp-fill { width:100%; height:100%; background:linear-gradient(90deg,#44aacc,#66ddff); border-radius:3px; transition:width 0.4s; }
+  #player-hp-fill.low { background:linear-gradient(90deg,#cc3333,#ff4444); animation:urgentPulse 0.8s infinite; }
+
+  /* 连击 */
+  #combo-display { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) translateY(-80px);
+    pointer-events:none; z-index:10; text-align:center; opacity:0; transition:opacity 0.3s; }
+  #combo-display.show { opacity:1; }
+  #combo-count { font-size:60px; font-weight:bold; letter-spacing:0.05em; }
+  #combo-words { font-size:16px; letter-spacing:0.3em; margin-top:4px; }
+
+  /* 眩晕 */
+  #stun-overlay { position:fixed; top:0;left:0;width:100%;height:100%;
+    background:rgba(255,0,0,0.08); pointer-events:none; z-index:20; opacity:0; transition:opacity 0.15s; }
+  #stun-overlay.active { opacity:1; }
+
+  /* 濒死 */
+  #death-vignette { position:fixed; top:0;left:0;width:100%;height:100%; pointer-events:none; z-index:5;
+    box-shadow:inset 0 0 0 rgba(200,20,20,0); transition:box-shadow 1s; }
+  #death-vignette.active { box-shadow:inset 0 0 120px rgba(200,20,20,0.35); animation:deathPulse 1.5s infinite; }
+
+  /* 提示 */
+  #hint { position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+    color:rgba(200,200,220,0.45); font-size:14px; letter-spacing:0.15em;
+    pointer-events:none; z-index:10; transition:opacity 0.6s; }
+  #result-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    pointer-events:none; z-index:25; text-align:center; opacity:0; transition:opacity 0.5s; }
+  #result-overlay.show { opacity:1; }
+  #result-text { font-size:48px; font-weight:bold; letter-spacing:0.2em; }
+  #result-sub { font-size:16px; letter-spacing:0.2em; margin-top:10px; opacity:0.7; }
+  #result-restart { pointer-events:auto; margin-top:20px; padding:10px 30px;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.7);
+    font-size:14px; letter-spacing:0.2em; border-radius:4px; cursor:pointer; font-family:inherit;
+    transition:all 0.3s; }
+  #result-restart:hover { background:rgba(255,255,255,0.12); color:#fff; }
+
+  @keyframes pulse { 50% { opacity:0.4; } }
+  @keyframes urgentPulse { 50% { box-shadow:0 0 20px rgba(255,0,0,0.4); } }
+  @keyframes deathPulse { 50% { box-shadow:inset 0 0 160px rgba(200,20,20,0.5); } }
+  .es-btn { background:rgba(255,255,255,0.03); border:1px solid; border-radius:4px;
+    padding:6px 14px; cursor:pointer; font-size:12px; font-family:inherit; letter-spacing:0.1em;
+    transition:all 0.3s; opacity:0.6; }
+  .es-btn:hover { opacity:1; background:rgba(255,255,255,0.06); transform:translateY(-2px); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="enemy-zone">
+  <div id="enemy-name">信息涡流</div>
+  <div id="enemy-hp-bar"><div id="enemy-hp-fill"></div></div>
+  <div id="enemy-timer"><div id="enemy-timer-fill"></div></div>
+</div>
+
+<div id="combo-display">
+  <div id="combo-count"></div>
+  <div id="combo-words"></div>
+</div>
+
+<div id="player-zone">
+  <div id="player-info">潜航者 · 意识完整度 100%</div>
+  <div id="player-hp-bar"><div id="player-hp-fill"></div></div>
+</div>
+
+<div id="stun-overlay"></div>
+<div id="death-vignette"></div>
+<div id="hint">红攻·蓝防·绿愈·紫势(时停+倍击)·灰乱(勿点)</div>
+<div id="enemy-select" style="position:fixed;bottom:130px;left:50%;transform:translateX(-50%);
+  display:flex;gap:10px;z-index:10;">
+  <button onclick="selectEnemy(0)" class="es-btn" id="es-btn-0" style="border-color:#ff9988;color:#ff9988;">涡流</button>
+  <button onclick="selectEnemy(1)" class="es-btn" id="es-btn-1" style="border-color:#cc88ff;color:#cc88ff;">失调</button>
+  <button onclick="selectEnemy(2)" class="es-btn" id="es-btn-2" style="border-color:#886688;color:#886688;">黑洞</button>
+</div>
+<button id="start-btn"
+  style="position:fixed;bottom:75px;left:50%;transform:translateX(-50%);z-index:15;
+  padding:10px 36px;background:rgba(100,180,255,0.12);border:1px solid rgba(100,180,255,0.5);
+  color:rgba(200,220,255,0.9);font-size:16px;letter-spacing:0.25em;border-radius:6px;
+  cursor:pointer;font-family:inherit;transition:all 0.3s;opacity:0;pointer-events:none;">
+  开始潜航
+</button>
+<div id="result-overlay">
+  <div id="result-text"></div>
+  <div id="result-sub"></div>
+  <div id="result-restart" onclick="restartBattle()">再次潜航</div>
+</div>
+
+<script>
+// ═══════════════════ 意识之海 · 文字决 · 核心 ═══════════════════
+
+// ── Web Audio 音效引擎（纯合成，零文件）──
+const Sound = (()=>{
+  let ctx=null;
+  function ac(){if(!ctx) ctx=new(window.AudioContext||window.webkitAudioContext)();if(ctx.state==='suspended') ctx.resume();return ctx;}
+
+  // 主音量
+  const master = ()=> { const g=ac().createGain();g.gain.value=0.25;g.connect(ac().destination);return g; };
+
+  // 短促音：噪声爆发 + 振荡器
+  function blip(freq,type,noiseMix,dur,vol=1){
+    const a=ac(), m=master(), now=a.currentTime;
+    const g=a.createGain(); g.connect(m);
+    g.gain.setValueAtTime(0.01,now); g.gain.linearRampToValueAtTime(vol*0.25,now+0.01);
+    g.gain.exponentialRampToValueAtTime(0.001,now+dur);
+
+    if(noiseMix>0){
+      const buf=a.createBuffer(1,a.sampleRate*dur,a.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*noiseMix;
+      const s=a.createBufferSource(); s.buffer=buf;
+      const ng=a.createGain();ng.gain.setValueAtTime(noiseMix*0.4,now);ng.gain.exponentialRampToValueAtTime(0.001,now+dur);
+      ng.connect(m); s.connect(ng); s.start(now); s.stop(now+dur);
+    }
+
+    if(freq){
+      const o=a.createOscillator(); o.type=type||'sine'; o.frequency.setValueAtTime(freq,now);
+      o.frequency.exponentialRampToValueAtTime(freq*0.3,now+dur);
+      o.connect(g); o.start(now); o.stop(now+dur);
+    }
+  }
+
+  // 上升/下降滑音
+  function sweep(fr,to,dur,type='sine',vol=1){
+    const a=ac(), m=master(), now=a.currentTime;
+    const g=a.createGain(); g.connect(m);
+    g.gain.setValueAtTime(vol*0.2,now); g.gain.exponentialRampToValueAtTime(0.001,now+dur);
+    const o=a.createOscillator(); o.type=type; o.frequency.setValueAtTime(fr,now);
+    o.frequency.linearRampToValueAtTime(to,now+dur); o.connect(g);
+    o.start(now); o.stop(now+dur);
+  }
+
+  // 低频心跳
+  function heartbeat(){
+    const a=ac(), m=master(), now=a.currentTime;
+    [0,0.15].forEach(delay=>{
+      const g=a.createGain(); g.connect(m);
+      g.gain.setValueAtTime(0.01,now+delay);g.gain.linearRampToValueAtTime(0.3,now+delay+0.05);
+      g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.25);
+      const o=a.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(45,now+delay);
+      o.frequency.linearRampToValueAtTime(30,now+delay+0.2); o.connect(g);
+      o.start(now+delay); o.stop(now+delay+0.3);
+    });
+  }
+
+  return {
+    // 点击攻字：锋利打击
+    attack(){ blip(800,'square',0.6,0.15,0.8); },
+    // 连击攻字：更亮更高
+    comboAtk(lv){ blip(800+lv*200,'square',0.4,0.12,1); },
+    // 防字：低沉护盾
+    defense(){ blip(120,'triangle',0.2,0.3,0.7); sweep(200,80,0.35,'sine',0.5); },
+    // 愈字：温暖上升
+    heal(){ sweep(300,600,0.3,'sine',0.6); sweep(400,800,0.25,'sine',0.4); },
+    // 势字：时停效果（降调拉伸）
+    boost(){ sweep(600,150,0.5,'sawtooth',0.5); blip(1000,'sine',0,0.15,0.4); },
+    // 点击乱字：刺耳警告
+    noise(){ blip(200,'sawtooth',0.8,0.2,0.6); blip(100,'square',0.5,0.15,0.4); },
+    // 执念字：深沉重击
+    deathDoor(){ blip(50,'triangle',0,0.5,1.2); sweep(100,30,0.6,'sine',0.8); },
+    // 敌人攻击：威胁音
+    enemyAtk(){ sweep(150,400,0.3,'sawtooth',0.6); blip(60,'square',0.4,0.2,0.5); },
+    // 护盾格挡：清脆弹开
+    shieldBlock(){ blip(500,'triangle',0.1,0.2,0.6); sweep(600,900,0.15,'sine',0.4); },
+    // 濒死心跳
+    deathPulse(){ heartbeat(); },
+    // 胜利：上升和弦
+    victory(){ sweep(400,800,0.4,'sine',0.6); setTimeout(()=>sweep(500,1000,0.5,'sine',0.6),200); },
+    // 失败：低沉下降
+    defeat(){ sweep(300,60,0.8,'triangle',0.7); },
+    // 眩晕
+    stun(){ blip(100,'sawtooth',0.9,0.4,0.5); },
+    // 连击里程碑 x3/x5/x7
+    comboMilestone(lv){ sweep(400*lv,800*lv,0.3,'sine',0.7); blip(1000+lv*200,'triangle',0,0.2,0.6); }
+  };
+})();
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// DOM refs
+const elEnemyName = document.getElementById('enemy-name');
+const elEnemyHPFill = document.getElementById('enemy-hp-fill');
+const elEnemyTimerFill = document.getElementById('enemy-timer-fill');
+const elPlayerInfo = document.getElementById('player-info');
+const elPlayerHPFill = document.getElementById('player-hp-fill');
+const elComboDisplay = document.getElementById('combo-display');
+const elComboCount = document.getElementById('combo-count');
+const elComboWords = document.getElementById('combo-words');
+const elStun = document.getElementById('stun-overlay');
+const elVignette = document.getElementById('death-vignette');
+const elHint = document.getElementById('hint');
+const elResultOverlay = document.getElementById('result-overlay');
+const elResultText = document.getElementById('result-text');
+const elResultSub = document.getElementById("result-sub");
+const elStartBtn = document.getElementById("start-btn");
+
+let W, H, mx = -999, my = -999, dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr);
+}
+window.addEventListener('resize', resize); resize();
+
+// 开始按钮事件（用JS监听比onclick可靠）
+document.getElementById('start-btn').addEventListener('click', () => {
+  if (mode !== STATE.COUNTDOWN) startBattle(selectedEnemyIdx);
+});
+document.getElementById('start-btn').addEventListener('mouseenter', function(){
+  this.style.background='rgba(100,180,255,0.22)'; this.style.color='#fff';
+});
+document.getElementById('start-btn').addEventListener('mouseleave', function(){
+  this.style.background='rgba(100,180,255,0.12)'; this.style.color='rgba(200,220,255,0.9)';
+});
+
+// ═══════════════ 词库配置 ═══════════════
+
+const WORD_LIBRARY = {
+  '攻': { words:['斩','焚','破','裂','刺','碎','断','灭','穿','爆'], color:'#ff6644', glow:'#cc3311', damage:12 },
+  '防': { words:['盾','御','守','壁','挡','固','护','抗','镇','屏'], color:'#66aaff', glow:'#3366cc', damage:0 },
+  '愈': { words:['愈','生','复','疗','续','苏','润','养','补','安'], color:'#44dd88', glow:'#228844', damage:0 },
+  '势': { words:['疾','锐','猛','坚','悟','醒','凝','聚','燃','静'], color:'#cc88ff', glow:'#6622aa', damage:0 }
+};
+const NOISE_WORDS = ['的','了','吗','吧','呢','啊','么','乎','矣','兮'];
+const DEATH_DOOR_WORDS = ['不甘','执念','归来','绝境','逆转','燃尽'];
+
+const ENEMIES = [
+  { name:'信息涡流', icon:'涡', hp:80,  interval:4.5, noiseRate:0.20, speed:1.0, noiseLife:0.4, desc:'意识之海中的碎片信息聚合体', color:'#ff9988', glow:'#cc5544', tier:1 },
+  { name:'认知失调', icon:'乱', hp:140, interval:3.5, noiseRate:0.35, speed:1.5, noiseLife:1.0, desc:'扭曲事实的精神污染', color:'#cc88ff', glow:'#8844cc', tier:2, mirror:true },
+  { name:'情绪黑洞', icon:'渊', hp:200, interval:2.8, noiseRate:0.45, speed:2.0, noiseLife:2.2, desc:'吞噬一切正面意识的深渊', color:'#664466', glow:'#331133', tier:3, chase:true }
+];
+
+// ═══════════════ 游戏状态 ═══════════════
+
+const STATE = { READY:'ready', COUNTDOWN:'countdown', STUN:'stun', VICTORY:'victory', DEFEAT:'defeat' };
+let mode = STATE.READY;
+let enemyIdx = 0;
+let enemyHP, enemyMaxHP, enemyTimer, enemyInterval;
+let playerHP = 100, playerMaxHP = 100;
+let combo = 0, comboTimer = 0, comboWords = [];
+let stunTimer = 0;
+let deathDoorTriggered = false;
+let selectedEnemyIdx = 0;  // 选择但未开始
+let nextAttackBoost = false; // 势字增益
+let hasShield = false;        // 防御护盾
+let battleWords = [];
+let particles = [];
+let bgParticles = [];
+let shakeAmount = 0;
+let roundCount = 0;
+let balanceFrames = 0;
+let deathPulseTimer = 0;
+
+// ═══════════════ 粒子类 ═══════════════
+
+class BGParticle {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random()*W; this.y = Math.random()*H;
+    this.vx = (Math.random()-0.5)*0.2; this.vy = (Math.random()-0.5)*0.2;
+    this.text = '意识之海思绪碎片思维光芒量子虚空';
+    this.text = this.text[Math.floor(Math.random()*this.text.length)];
+    this.size = 9+Math.random()*7;
+    this.alpha = 0.04+Math.random()*0.06;
+    this.life = 400+Math.random()*500; this.age = Math.random()*this.life;
+    this.fp = Math.random()*Math.PI*2;
+  }
+  update() {
+    this.x+=this.vx; this.y+=this.vy; this.age++; this.fp+=0.015;
+    if(this.age>this.life) this.reset();
+    if(this.x<-20) this.x=W+20; if(this.x>W+20) this.x=-20;
+    if(this.y<-20) this.y=H+20; if(this.y>H+20) this.y=-20;
+  }
+  draw(ctx) {
+    const a = this.alpha*(0.5+0.5*Math.sin(this.fp));
+    ctx.fillStyle = `rgba(150,160,200,${a})`;
+    ctx.font = `${this.size}px "Noto Serif SC","SimSun",serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(this.text,this.x,this.y);
+  }
+}
+
+class HitParticle {
+  constructor(x,y,color,text) {
+    this.x=x; this.y=y;
+    const a=Math.random()*Math.PI*2, s=1.5+Math.random()*5;
+    this.vx=Math.cos(a)*s; this.vy=Math.sin(a)*s-2;
+    this.text=text||'·';
+    this.size=10+Math.random()*14;
+    this.alpha=0.8; this.life=25+Math.random()*35; this.age=0;
+    this.color=color; this.gravity=0.08;
+  }
+  update() { this.x+=this.vx; this.y+=this.vy; this.vy+=this.gravity; this.age++;
+    this.alpha=0.8*(1-this.age/this.life); }
+  draw(ctx) {
+    if(this.alpha<0.01||this.age>this.life) return;
+    ctx.fillStyle = `rgba(${hexToRGB(this.color)},${this.alpha})`;
+    ctx.font = `${this.size}px "Noto Serif SC","SimSun",serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(this.text,this.x,this.y);
+  }
+  get dead(){return this.age>this.life;}
+}
+
+class DamageText {
+  constructor(x,y,text,color) {
+    this.x=x; this.y=y; this.text=text; this.color=color;
+    this.vy=-2.5; this.alpha=1; this.life=50; this.age=0; this.size=22;
+  }
+  update() { this.y+=this.vy; this.vy*=0.97; this.age++;
+    this.alpha=1-this.age/this.life; this.size+=0.1; }
+  draw(ctx) {
+    if(this.alpha<0.01||this.age>this.life) return;
+    ctx.save(); ctx.globalAlpha=this.alpha;
+    ctx.fillStyle=this.color;
+    ctx.font=`bold ${this.size}px "Noto Serif SC","SimSun",serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(this.text,this.x,this.y);
+    ctx.restore();
+  }
+  get dead(){return this.age>this.life;}
+}
+
+function hexToRGB(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return `${r},${g},${b}`;}
+
+// ═══════════════ 战场文字 ═══════════════
+
+class BattleWord {
+  constructor(cat,text) {
+    this.cat = cat; // '攻'|'防'|'愈'|'势'|'乱'|'死'
+    this.text = text;
+    this.x = W*0.25+Math.random()*W*0.5;
+    this.y = H*0.3+Math.random()*H*0.4;
+    this.vx = (Math.random()-0.5)*1.2;
+    this.vy = (Math.random()-0.5)*0.8;
+    this.size = 24+Math.random()*10;
+    this.alpha = 0.85;
+    this.targetAlpha = 0.85;
+    this.hovered = false;
+    this.glowExtra = 0;
+    this.phase = Math.random()*Math.PI*2;
+    this.wobbleAmp = 0.3+Math.random()*0.5;
+    this.alive = true;
+    this.cooldown = 0;
+    this.isDeathDoor = false;
+    this.idleTime = 0;
+    this.noiseLife = 1.0; // 干扰字生命倍率
+  }
+  update() {
+    if (!this.alive) { this.alpha+= (0-this.alpha)*0.1; return; }
+    if (this.cooldown>0) { this.cooldown--; this.targetAlpha=0.3; }
+    else this.targetAlpha=0.85;
+
+    // 闲置超时消失
+    if(this.cat!=='死'){
+      this.idleTime++;
+      let maxIdle;
+      if(this.cat==='乱'){
+        maxIdle = Math.floor(250 * this.noiseLife); // 干扰字受noiseLife控制
+      } else {
+        maxIdle = 350 + Math.floor(Math.random()*150);
+      }
+      if(this.idleTime > maxIdle){
+        this.targetAlpha = 0;
+        if(this.alpha < 0.03) this.alive = false;
+      }
+    }
+
+    this.phase+=0.02;
+    this.x+=this.vx+Math.sin(this.phase)*this.wobbleAmp*0.5;
+    this.y+=this.vy+Math.cos(this.phase*1.3)*this.wobbleAmp*0.4;
+    // 边界
+    const margin=50;
+    if(this.x<margin){this.x=margin;this.vx*=-1;}
+    if(this.x>W-margin){this.x=W-margin;this.vx*=-1;}
+    if(this.y<margin+60){this.y=margin+60;this.vy*=-1;}
+    if(this.y>H-margin-60){this.y=H-margin-60;this.vy*=-1;}
+    if(Math.random()<0.005){this.vx+=(Math.random()-0.5)*0.6;this.vy+=(Math.random()-0.5)*0.4;
+      this.vx=Math.max(-1.5,Math.min(1.5,this.vx)); this.vy=Math.max(-1,Math.min(1,this.vy));}
+
+    this.alpha+=(this.targetAlpha-this.alpha)*0.08;
+    // 悬停放大
+    const ts = this.isDeathDoor?44+Math.random()*4:this.cat==='乱'?24:28+Math.random()*6;
+    this.size+=(ts+this.glowExtra-this.size)*0.1;
+
+    // 追踪鼠标（情绪黑洞的干扰字）
+    if (this.cat==='乱' && this._chase) {
+      const dx=mx-this.x, dy=my-this.y, d=Math.sqrt(dx*dx+dy*dy);
+      if(d>1){this.x+=dx/d*0.8; this.y+=dy/d*0.8;}
+    }
+  }
+  draw(ctx) {
+    if(this.alpha<0.02) return;
+    const catData = WORD_LIBRARY[this.cat];
+    let clr, glow;
+    if(this.cat==='乱'){clr='#999999';glow='#555555';}
+    else if(this.cat==='死'){clr='#ff3333';glow='#cc0000';}
+    else if(catData){clr=catData.color;glow=catData.glow;}
+    else {clr='#ccc';glow='#666';}
+
+    ctx.save(); ctx.globalAlpha=this.alpha;
+    if(this.hovered||this.glowExtra>2){
+      ctx.shadowColor=glow; ctx.shadowBlur=12+this.glowExtra*0.5;
+    }
+    ctx.fillStyle=clr;
+    const fs = this.isDeathDoor?`bold ${this.size}px`:`${this.size}px`;
+    ctx.font = `${fs} "Noto Serif SC","SimSun",serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(this.text,this.x,this.y);
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+  hitTest(mx,my) {
+    const w=Math.max(this.size*this.text.length*0.55,35);
+    const h=this.size*1.1;
+    return mx>this.x-w/2&&mx<this.x+w/2&&my>this.y-h/2&&my<this.y+h/2;
+  }
+  static fromLibrary(cat,text) {
+    const bw = new BattleWord(cat,text);
+    bw.size = 26+Math.random()*8;
+    return bw;
+  }
+}
+
+// ═══════════════ 初始化 ═══════════════
+
+function initBGParticles() {
+  bgParticles=[];
+  const n=Math.floor(W*H/20000);
+  for(let i=0;i<n;i++) bgParticles.push(new BGParticle());
+}
+
+function spawnBattleWords() {
+  battleWords=[];
+  balanceWords();
+}
+
+// 动态平衡：保证字总量和各类型占比，保留随机性
+function balanceWords() {
+  const enemy=ENEMIES[enemyIdx];
+  // 清理死字
+  battleWords=battleWords.filter(bw=>bw.alive&&!(bw.cat==='乱'&&Math.random()<0.2));
+
+  // 目标：player总字10±2，各类占比
+  const jitter = Math.floor(Math.random()*3)-1; // ±1随机
+  const targetTotal = 10 + jitter;
+  const targets = {
+    '攻': Math.floor(targetTotal*0.40) + (Math.random()<0.5?1:0),
+    '防': Math.floor(targetTotal*0.18) + (Math.random()<0.5?1:0),
+    '愈': Math.floor(targetTotal*0.18) + (Math.random()<0.5?1:0),
+    '势': Math.floor(targetTotal*0.14) + (Math.random()<0.5?1:0),
+  };
+  // 确保实际target总和=targetTotal
+  let sum=0; for(const c in targets) sum+=targets[c];
+  if(sum<targetTotal) targets['攻']+=targetTotal-sum;
+
+  // 统计当前各类存活数（不含乱/死）
+  const current={攻:0,防:0,愈:0,势:0};
+  battleWords.forEach(bw=>{if(bw.alive&&current[bw.cat]!==undefined) current[bw.cat]++;});
+
+  // 随机字池
+  const pool={};
+  for(const [cat,data] of Object.entries(WORD_LIBRARY)){
+    pool[cat]=[...data.words];
+  }
+
+  // 补充不足的类
+  for(const cat of ['攻','防','愈','势']){
+    while(current[cat] < targets[cat]){
+      const text=pool[cat][Math.floor(Math.random()*pool[cat].length)];
+      const bw=BattleWord.fromLibrary(cat,text);
+      bw.vx*=enemy.speed; bw.vy*=enemy.speed; bw.wobbleAmp*=enemy.speed;
+      battleWords.push(bw);
+      current[cat]++;
+    }
+  }
+
+  // 移除多余的类（优先移除idle时间最长的）
+  for(const cat of ['攻','防','愈','势']){
+    const catWords=battleWords.filter(bw=>bw.alive&&bw.cat===cat);
+    while(catWords.length > targets[cat]+1){ // +1容差
+      const oldest=catWords.sort((a,b)=>b.idleTime-a.idleTime)[0];
+      if(oldest){oldest.alive=false;oldest.targetAlpha=0;}
+      catWords.splice(catWords.indexOf(oldest),1);
+    }
+  }
+
+  // 干扰字：数量=enemy.noiseRate*playerCount，上限8
+  const playerCount=battleWords.filter(bw=>bw.alive&&bw.cat!=='乱'&&bw.cat!=='死').length;
+  const noiseTarget=Math.min(8, Math.floor(playerCount*enemy.noiseRate)+ (enemy.tier>=3?2:0));
+  const noiseCurrent=battleWords.filter(bw=>bw.alive&&bw.cat==='乱').length;
+
+  if(noiseCurrent<noiseTarget){
+    for(let i=0;i<noiseTarget-noiseCurrent;i++){
+      let noiseText=NOISE_WORDS[Math.floor(Math.random()*NOISE_WORDS.length)];
+      if(enemy.mirror&&Math.random()<0.3){
+        noiseText=WORD_LIBRARY['攻'].words[Math.floor(Math.random()*WORD_LIBRARY['攻'].words.length)];
+      }
+      const nw=new BattleWord('乱',noiseText);
+      nw.size=18+Math.random()*8; nw.alpha=0.6;
+      nw.vx*=enemy.speed; nw.vy*=enemy.speed; nw.wobbleAmp*=enemy.speed;
+      nw.noiseLife=enemy.noiseLife; nw._chase=enemy.chase||false;
+      battleWords.push(nw);
+    }
+  }else if(noiseCurrent>noiseTarget+1){
+    // 移除多余干扰字
+    const noiseWords=battleWords.filter(bw=>bw.alive&&bw.cat==='乱');
+    const sorted=noiseWords.sort((a,b)=>a.idleTime-b.idleTime); // 优先移除最新的
+    for(let i=0;i<noiseCurrent-noiseTarget&&i<sorted.length;i++){
+      sorted[i].alive=false; sorted[i].targetAlpha=0;
+    }
+  }
+}
+
+function selectEnemy(idx) {
+  // 战斗中不允许切换
+  if(mode===STATE.COUNTDOWN) return;
+  // 点同一个 → 确认开战；点不同的 → 选中
+  if(idx===selectedEnemyIdx){
+    startBattle(idx);
+  } else {
+    selectedEnemyIdx = idx;
+    document.querySelectorAll('.es-btn').forEach((b,i)=>{
+      b.style.opacity = i===idx?'1':'0.45';
+      b.style.transform = i===idx?'translateY(-2px)':'none';
+    });
+    elHint.textContent = `已选择 ${ENEMIES[idx].icon} ${ENEMIES[idx].name} · 再次点击确认潜航`;
+    elHint.style.opacity = '0.8';
+    elStartBtn.style.opacity='1'; elStartBtn.style.pointerEvents='auto';
+    elResultOverlay.classList.remove('show');
+  }
+}
+
+function startBattle(idx) {
+  // 战斗中禁止按钮切换
+  if(mode===STATE.COUNTDOWN) return;
+  // 重置按钮状态
+  document.querySelectorAll('.es-btn').forEach(b=>{b.style.opacity='0.6';b.style.transform='none';});
+  enemyIdx=idx; selectedEnemyIdx=idx;
+  const e=ENEMIES[idx];
+  enemyHP=enemyMaxHP=e.hp;
+  enemyInterval=e.interval;
+  enemyTimer=enemyInterval;
+  playerHP=playerMaxHP=100;
+  combo=0; comboTimer=0; comboWords=[];
+  stunTimer=0; deathDoorTriggered=false; roundCount=0; hasShield=false;
+  particles=[]; shakeAmount=0;
+  mode=STATE.COUNTDOWN;
+
+  battleWords=[]; spawnBattleWords();
+  initBGParticles();
+
+  elEnemyName.textContent=`${e.icon} ${e.name}`;
+  elEnemyHPFill.style.width='100%';
+  elEnemyTimerFill.style.width='100%';
+  elEnemyTimerFill.classList.remove('urgent');
+  elPlayerHPFill.style.width='100%';
+  elPlayerHPFill.classList.remove('low');
+  elPlayerInfo.textContent='潜航者 · 意识完整度 100%';
+  elComboDisplay.classList.remove('show');
+  elStun.classList.remove('active');
+  elVignette.classList.remove('active');
+  elHint.textContent='红攻·蓝防·绿愈·紫势(时停+倍击)·灰乱(勿点)';
+  elHint.style.opacity='0.7';
+  elStartBtn.style.opacity='0'; elStartBtn.style.pointerEvents='none';
+  elResultOverlay.classList.remove('show');
+}
+
+function restartBattle() { startBattle(enemyIdx); }
+
+// ═══════════════ 战斗逻辑 ═══════════════
+
+function dealDamage(dmg, isCombo) {
+  enemyHP-=dmg;
+  if(enemyHP<0) enemyHP=0;
+  elEnemyHPFill.style.width=`${(enemyHP/enemyMaxHP)*100}%`;
+  // 伤害数字
+  const ex=W*0.5, ey=H*0.2;
+  particles.push(new DamageText(ex+(Math.random()-0.5)*80,ey+30,`-${dmg}`,
+    isCombo?'#ffcc44':'#ff8866'));
+  // 粒子爆发
+  for(let i=0;i<8;i++) particles.push(new HitParticle(ex,ey+20,isCombo?'#ffcc44':'#ff6644'));
+  // 屏幕震动
+  shakeAmount=Math.max(shakeAmount,dmg*0.3);
+
+  if (enemyHP<=0) {
+    mode=STATE.VICTORY; Sound.victory();
+    elResultText.textContent='噪点清除';
+    elResultText.style.color='#88ffcc';
+    elResultSub.textContent=`${ENEMIES[enemyIdx].desc} · 已净化`;
+    elResultOverlay.classList.add('show');
+    elHint.style.opacity='0';
+    for(let i=0;i<40;i++) particles.push(new HitParticle(W*0.5,H*0.25,'#88ffcc','·'));
+  }
+}
+
+function healPlayer(amt) {
+  playerHP=Math.min(playerMaxHP,playerHP+amt);
+  updatePlayerUI();
+  for(let i=0;i<6;i++) particles.push(new HitParticle(W*0.5,H*0.7,'#44dd88','+'));
+  particles.push(new DamageText(W*0.5,H*0.65,`+${amt}`,'#44dd88'));
+}
+
+function enemyAttack() {
+  if(mode===STATE.VICTORY||mode===STATE.DEFEAT) return;
+  // 护盾格挡
+  if(hasShield){
+    hasShield=false; updatePlayerUI(); Sound.shieldBlock();
+    particles.push(new DamageText(W*0.5,H*0.65,'护盾!','#66aaff'));
+    for(let i=0;i<12;i++) particles.push(new HitParticle(W*0.5,H*0.7,'#66aaff','□'));
+    combo=0; comboTimer=0; comboWords=[];
+    elComboDisplay.classList.remove('show');
+    enemyTimer=enemyInterval; roundCount++;
+    return;
+  }
+  const dmg=8+Math.floor(Math.random()*12);
+  Sound.enemyAtk();
+  playerHP-=dmg;
+  if(playerHP<0) playerHP=0;
+  updatePlayerUI();
+  shakeAmount=Math.max(shakeAmount,dmg*0.5);
+  particles.push(new DamageText(W*0.5,H*0.65,`-${dmg}`,'#ff4444'));
+  for(let i=0;i<15;i++) particles.push(new HitParticle(W*0.5,H*0.7,'#ff3333','×'));
+  combo=0; comboTimer=0; comboWords=[];
+  elComboDisplay.classList.remove('show');
+
+  if(playerHP<=0){
+    mode=STATE.DEFEAT; Sound.defeat();
+    elResultText.textContent='意识消散';
+    elResultText.style.color='#ff4444';
+    elResultSub.textContent='在意识之海中沉沦...';
+    elResultOverlay.classList.add('show');
+    elHint.style.opacity='0';
+  } else {
+    // 新一轮
+    enemyTimer=enemyInterval;
+    roundCount++;
+    refreshWords();
+  }
+}
+
+function updatePlayerUI() {
+  elPlayerHPFill.style.width=`${(playerHP/playerMaxHP)*100}%`;
+  if(playerHP<playerMaxHP*0.25) elPlayerHPFill.classList.add('low');
+  else elPlayerHPFill.classList.remove('low');
+  const shieldTag = hasShield ? ' [盾]' : '';
+  elPlayerInfo.textContent=`潜航者 · 意识完整度 ${Math.round(playerHP)}%${shieldTag}`;
+  if(playerHP<playerMaxHP*0.25) elVignette.classList.add('active');
+  else elVignette.classList.remove('active');
+}
+
+function refreshWords() {
+  balanceWords();
+}
+
+function triggerDeathDoor() {
+  if(deathDoorTriggered) return;
+  deathDoorTriggered=true; Sound.deathPulse();
+  // 生成执念字
+  const picked=[];
+  const pool=[...DEATH_DOOR_WORDS];
+  for(let i=0;i<3&&pool.length>0;i++){
+    const idx=Math.floor(Math.random()*pool.length);
+    picked.push(pool.splice(idx,1)[0]);
+  }
+  picked.forEach(t=>{
+    const dw=new BattleWord('死',t);
+    dw.isDeathDoor=true; dw.size=50; dw.alpha=0.7;
+    dw.x=W*0.3+Math.random()*W*0.4;
+    dw.y=H*0.5+Math.random()*H*0.25;
+    dw.vx=(Math.random()-0.5)*0.3; dw.vy=(Math.random()-0.5)*0.2;
+    battleWords.push(dw);
+  });
+  elHint.textContent='执念浮现...点击红色大字触发绝境反击！';
+  elHint.style.opacity='0.9';
+  setTimeout(()=>{elHint.style.opacity='0.6';elHint.textContent='触碰攻字攻击 · 防字格挡 · 避开灰色乱字';},3000);
+}
+
+function updateComboColors() {
+  const count=combo;
+  let clr='#ffffff';
+  if(count>=7) clr='#ffdd00';
+  else if(count>=5) clr='#ff88ff';
+  else if(count>=3) clr='#ffaa44';
+  else clr='#ffffff';
+  elComboCount.style.color=clr;
+
+  if(count>=3){
+    elComboWords.textContent=comboWords.slice(-3).join('·');
+    elComboWords.style.color=clr;
+  }
+}
+
+// ═══════════════ 更新循环 ═══════════════
+
+function update(dt) {
+  if(mode===STATE.VICTORY||mode===STATE.DEFEAT){
+    // 仍然更新粒子
+    particles=particles.filter(p=>!p.dead);
+    particles.forEach(p=>p.update());
+    bgParticles.forEach(p=>p.update());
+    return;
+  }
+
+  // 倒计时
+  if(mode===STATE.COUNTDOWN){
+    enemyTimer-=dt;
+    if(enemyTimer<=0){
+      enemyTimer=0;
+      enemyAttack();
+    }
+    // 计时器UI
+    const pct=(enemyTimer/enemyInterval)*100;
+    elEnemyTimerFill.style.width=`${pct}%`;
+    if(enemyTimer<1.5) elEnemyTimerFill.classList.add('urgent');
+    else elEnemyTimerFill.classList.remove('urgent');
+  }
+
+  // 眩晕
+  if(stunTimer>0){
+    stunTimer-=dt;
+    if(stunTimer<=0){stunTimer=0;elStun.classList.remove('active');}
+  }
+
+  // 连击衰减
+  if(comboTimer>0){
+    comboTimer-=dt;
+    if(comboTimer<=0){combo=0;comboWords=[];elComboDisplay.classList.remove('show');}
+  }
+
+  // 濒死检测 + 持续心跳
+  if(playerHP<playerMaxHP*0.25&&mode===STATE.COUNTDOWN){
+    if(!deathDoorTriggered) triggerDeathDoor();
+    // 每2.5秒一次心跳
+    deathPulseTimer += dt;
+    if(deathPulseTimer > 2.5){ deathPulseTimer=0; Sound.deathPulse(); }
+  } else { deathPulseTimer = 0; }
+
+  // 更新所有文字
+  battleWords.forEach(bw=>bw.update());
+  // 清理完全死亡的字
+  battleWords=battleWords.filter(bw=>bw.alive||bw.alpha>0.03);
+  // 定期重平衡（约每秒1次）
+  if(mode===STATE.COUNTDOWN){
+    balanceFrames++;
+    if(balanceFrames > 55){
+      balanceFrames = 0;
+      balanceWords();
+    }
+  }
+
+  // 更新粒子
+  particles=particles.filter(p=>!p.dead);
+  particles.forEach(p=>p.update());
+  bgParticles.forEach(p=>p.update());
+
+  // 屏幕震动衰减
+  if(shakeAmount>0) shakeAmount*=0.85;
+  if(shakeAmount<0.1) shakeAmount=0;
+}
+
+// ═══════════════ 渲染 ═══════════════
+
+function drawBackground() {
+  const grad=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*0.7);
+  grad.addColorStop(0,'#0a0a25'); grad.addColorStop(0.5,'#06061a'); grad.addColorStop(1,'#030310');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+}
+
+function draw() {
+  ctx.clearRect(0,0,W,H);
+
+  // 屏幕震动
+  ctx.save();
+  if(shakeAmount>0){
+    const sx=(Math.random()-0.5)*shakeAmount*2;
+    const sy=(Math.random()-0.5)*shakeAmount*2;
+    ctx.translate(sx,sy);
+  }
+
+  drawBackground();
+
+  // READY状态：提示选敌
+  if(mode===STATE.READY){
+    ctx.save();
+    ctx.globalAlpha=0.35+0.1*Math.sin(Date.now()*0.002);
+    ctx.fillStyle='#8899cc';
+    ctx.font='22px "Noto Serif SC","SimSun",serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('选择噪点 · 再次点击确认潜航',W/2,H/2);
+    ctx.globalAlpha=0.2;
+    ctx.font='14px "Noto Serif SC","SimSun",serif';
+    ctx.fillText('红攻 · 蓝防 · 绿愈 · 紫势 · 灰乱',W/2,H/2+40);
+    ctx.restore();
+  }
+
+  // 敌人可视化
+  const ex=W*0.5, ey=H*0.22;
+  const enemy=ENEMIES[enemyIdx];
+  const pulse=1+Math.sin(Date.now()*0.003)*0.08;
+  ctx.save(); ctx.globalAlpha=0.5;
+  ctx.fillStyle=enemy.color;
+  ctx.font=`${36*pulse}px "Noto Serif SC","SimSun",serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(enemy.icon,ex,ey);
+  ctx.globalAlpha=0.15;
+  ctx.strokeStyle=enemy.glow; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(ex,ey,60*pulse,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+
+  // 玩家可视化
+  const px=W*0.5, py=H*0.72;
+  ctx.save(); ctx.globalAlpha=0.3;
+  ctx.fillStyle='#6699cc';
+  ctx.font='28px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('我',px,py);
+  ctx.globalAlpha=0.08;
+  ctx.strokeStyle='#6699cc'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(px,py,50,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+
+  // 背景粒子
+  bgParticles.forEach(p=>p.draw(ctx));
+
+  // 战场文字
+  battleWords.forEach(bw=>bw.draw(ctx));
+
+  // 粒子
+  particles.forEach(p=>p.draw(ctx));
+
+  ctx.restore(); // 震动
+
+  // 濒死边缘脉冲
+  if(playerHP<playerMaxHP*0.25&&playerHP>0&&mode===STATE.COUNTDOWN){
+    const dp=(playerMaxHP*0.25-playerHP)/(playerMaxHP*0.25);
+    const a=dp*0.25*(0.7+0.3*Math.sin(Date.now()*0.005));
+    ctx.save(); ctx.globalAlpha=a; ctx.strokeStyle='#cc2222'; ctx.lineWidth=8;
+    ctx.strokeRect(4,4,W-8,H-8); ctx.restore();
+  }
+}
+
+// ═══════════════ 主循环 ═══════════════
+
+let lastTime=performance.now();
+function loop(now) {
+  const dt=Math.min((now-lastTime)/1000,0.1);
+  lastTime=now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ═══════════════ 交互 ═══════════════
+
+canvas.addEventListener('mousemove',e=>{
+  mx=e.clientX; my=e.clientY;
+  if(mode===STATE.COUNTDOWN&&stunTimer<=0){
+    let hovered=null;
+    for(let bw of battleWords){
+      bw.hovered=false; bw.glowExtra=0;
+      if(bw.alive&&bw.hitTest(mx,my)&&bw.cooldown<=0){
+        hovered=bw; bw.hovered=true; bw.glowExtra=12; bw.idleTime=0;
+      }
+    }
+    canvas.style.cursor=hovered?'pointer':'crosshair';
+  }
+});
+
+canvas.addEventListener('click',e=>{
+  if(mode===STATE.VICTORY||mode===STATE.DEFEAT) return;
+  if(stunTimer>0) return;
+
+  for(let bw of battleWords){
+    if(!bw.alive||bw.cooldown>0) continue;
+    if(!bw.hitTest(e.clientX,e.clientY)) continue;
+
+    if(bw.cat==='攻'){
+      const bonus=combo>=7?3:combo>=5?2:combo>=3?1.5:1;
+      const boostMult=nextAttackBoost?2:1;
+      if(nextAttackBoost){nextAttackBoost=false;particles.push(new DamageText(bw.x,bw.y-16,'势·倍击!','#cc88ff'));}
+      const dmg=Math.floor((WORD_LIBRARY['攻'].damage+Math.random()*6)*bonus*boostMult);
+      dealDamage(dmg,combo>=3);
+      // 音效
+      if([3,5,7].includes(combo+1)) Sound.comboMilestone(combo+1);
+      else Sound.attack();
+      combo++; comboTimer=2;
+      comboWords.push(bw.text);
+      if(comboWords.length>5) comboWords.shift();
+      elComboDisplay.classList.add('show');
+      elComboCount.textContent=`×${combo}`;
+      updateComboColors();
+      // 攻击不再打断倒计时 — 纯输出，时间压力不减
+      // 碎裂粒子
+      for(let i=0;i<12;i++) particles.push(new HitParticle(bw.x,bw.y,WORD_LIBRARY['攻'].color,bw.text));
+      bw.alive=false; bw.targetAlpha=0;
+      refreshWords();
+      return;
+    }
+
+    if(bw.cat==='防'){
+      // 获得护盾，抵挡下次敌人攻击
+      hasShield=true; updatePlayerUI(); Sound.defense();
+      combo=0; comboTimer=0; comboWords=[];
+      elComboDisplay.classList.remove('show');
+      for(let i=0;i<12;i++) particles.push(new HitParticle(bw.x,bw.y,'#66aaff','□'));
+      particles.push(new DamageText(bw.x,bw.y-10,'护盾','#66aaff'));
+      bw.alive=false; bw.targetAlpha=0;
+      refreshWords();
+      return;
+    }
+
+    if(bw.cat==='愈'){
+      healPlayer(10+Math.floor(Math.random()*8)); Sound.heal();
+      bw.alive=false; bw.targetAlpha=0;
+      refreshWords();
+      return;
+    }
+
+    if(bw.cat==='势'){
+      // 时停0.6s + 下次攻击伤害x2
+      enemyTimer=Math.min(enemyInterval,enemyTimer+0.6);
+      nextAttackBoost=true;
+      Sound.boost();
+      for(let i=0;i<14;i++) particles.push(new HitParticle(bw.x,bw.y,'#cc88ff','·'));
+      particles.push(new DamageText(bw.x,bw.y-8,'时停!','#cc88ff'));
+      bw.alive=false; bw.targetAlpha=0;
+      refreshWords();
+      return;
+    }
+
+    if(bw.cat==='乱'){
+      // 眩晕惩罚
+      Sound.noise(); Sound.stun();
+      stunTimer=0.8; elStun.classList.add('active');
+      combo=0; comboTimer=0; comboWords=[];
+      elComboDisplay.classList.remove('show');
+      particles.push(new DamageText(bw.x,bw.y,'混乱','#ff4444'));
+      for(let i=0;i<5;i++) particles.push(new HitParticle(bw.x,bw.y,'#ff4444','×'));
+      bw.alive=false; bw.targetAlpha=0;
+      return;
+    }
+
+    if(bw.cat==='死'){
+      // 绝境反击
+      Sound.deathDoor();
+      const dmg=Math.floor(50+Math.random()*30);
+      dealDamage(dmg,true);
+      healPlayer(10);
+      deathDoorTriggered=true;
+      elVignette.classList.remove('active');
+      for(let i=0;i<25;i++) particles.push(new HitParticle(bw.x,bw.y,'#ff2222',bw.text));
+      particles.push(new DamageText(bw.x,bw.y-10,'绝境反击!','#ff2222'));
+      bw.alive=false; bw.targetAlpha=0;
+      // 清除所有执念字
+      battleWords.forEach(w=>{if(w.cat==='死'){w.alive=false;w.targetAlpha=0;}});
+      elHint.textContent='触碰攻字攻击 · 防字格挡 · 避开灰色乱字';
+      elHint.style.opacity='0.6';
+      return;
+    }
+  }
+});
+
+// 触屏
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const t=e.touches[0]; mx=t.clientX; my=t.clientY;
+  // 模拟click
+  if(mode===STATE.COUNTDOWN&&stunTimer<=0){
+    for(let bw of battleWords){
+      if(!bw.alive||bw.cooldown>0) continue;
+      if(bw.hitTest(mx,my)){
+        canvas.dispatchEvent(new MouseEvent('click',{clientX:mx,clientY:my}));
+        return;
+      }
+    }
+  }
+},{passive:false});
+
+canvas.addEventListener('touchmove',e=>{
+  e.preventDefault(); mx=e.touches[0].clientX; my=e.touches[0].clientY;
+},{passive:false});
+
+// ═══════════════ 启动 ═══════════════
+
+initBGParticles(); // 初始背景粒子
+// 初始选中涡流但不开始
+selectedEnemyIdx = 0;
+document.querySelectorAll('.es-btn').forEach((b,i)=>{b.style.opacity=i===0?'1':'0.45';b.style.transform=i===0?'translateY(-2px)':'none';});
+elStartBtn.style.opacity='1'; elStartBtn.style.pointerEvents='auto';
+elHint.textContent = '已选择 信息涡流 · 点击下方按钮开始潜航';
+elHint.style.opacity = '0.8';
+loop(performance.now());
+
+console.log('%c意识之海 · 文字决 %c已就绪',
+  'font-size:16px;color:#88ccff;','font-size:12px;color:#666;');
+console.log('%c点击红/橙色攻字攻击，蓝色防字格挡，绿色愈字回复，避开灰色乱字',
+  'font-size:12px;color:#888;font-style:italic;');
+console.log('%c敌人难度: %c信息涡流(简单) %c| 切换: %cstartBattle(1) %c认知失调 %cstartBattle(2) %c情绪黑洞',
+  'font-size:12px;color:#666;','color:#ff9988;','color:#666;','color:#aaa;','color:#cc88ff;','color:#aaa;','color:#664466;');
+</script>
+</body>
+</html>
