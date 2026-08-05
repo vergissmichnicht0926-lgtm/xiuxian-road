@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🏃 跑步成就表</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --card: #1a1a1a;
+    --text: #e0d8c8;
+    --muted: #888;
+    --accent: #f0a040;
+    --gold: #e8c547;
+    --diamond: #7ec8e3;
+    --legendary: #c084fc;
+    --done: #3a6b3a;
+    --border: #2a2a2a;
+    --hover: #252525;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { font-size: 16px; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh; padding: 16px 12px 60px;
+    max-width: 520px; margin: 0 auto;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  /* ── header ── */
+  header {
+    text-align: center; padding: 32px 0 20px;
+    border-bottom: 1px solid var(--border); margin-bottom: 16px;
+  }
+  header h1 { font-size: 1.6rem; letter-spacing: 0.08em; }
+  header .sub {
+    color: var(--muted); font-size: 0.85rem; margin-top: 6px;
+  }
+
+  /* ── stats bar ── */
+  .stats {
+    display: flex; justify-content: space-around;
+    background: var(--card); border-radius: 14px;
+    padding: 14px 8px; margin-bottom: 18px;
+    border: 1px solid var(--border);
+  }
+  .stats .num { font-size: 1.5rem; font-weight: 700; color: var(--accent); display: block; text-align: center; }
+  .stats .lbl { font-size: 0.72rem; color: var(--muted); display: block; text-align: center; margin-top: 2px; }
+
+  /* ── progress bar ── */
+  .progress-wrap { margin-bottom: 20px; }
+  .progress-wrap .pct { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+  .progress-bar {
+    height: 6px; background: var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .progress-bar .fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--gold));
+    border-radius: 6px; transition: width 0.35s ease;
+  }
+
+  /* ── section ── */
+  .section {
+    background: var(--card); border-radius: 14px;
+    border: 1px solid var(--border); margin-bottom: 14px; overflow: hidden;
+  }
+  .section-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 16px; cursor: pointer;
+    font-size: 1rem; font-weight: 600;
+    border-bottom: 1px solid transparent;
+    transition: background 0.15s;
+  }
+  .section-header:active { background: var(--hover); }
+  .section-header .icon { font-size: 1.25rem; }
+  .section-header .count { margin-left: auto; font-size: 0.75rem; color: var(--muted); font-weight: 400; }
+  .section-header .arrow { transition: transform 0.25s; color: var(--muted); font-size: 0.8rem; }
+  .section.collapsed .section-header { border-bottom-color: transparent; }
+  .section.collapsed .section-header .arrow { transform: rotate(-90deg); }
+  .section.collapsed .section-body { display: none; }
+
+  /* ── body ── */
+  .section-body { padding: 6px 12px 12px; }
+  .section-body .desc {
+    font-size: 0.78rem; color: var(--muted); padding: 4px 4px 10px;
+    font-style: italic;
+  }
+
+  /* ── achievement row ── */
+  .ach {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 6px; border-radius: 10px;
+    cursor: pointer; transition: background 0.12s;
+    border: 1px solid transparent;
+  }
+  .ach:active { background: var(--hover); }
+  .ach.done { opacity: 0.7; }
+  .ach.done .ach-text { text-decoration: line-through; text-decoration-color: var(--muted); }
+  .ach .checkbox {
+    flex-shrink: 0; width: 22px; height: 22px;
+    border-radius: 6px; border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; transition: all 0.2s;
+    margin-top: 1px;
+  }
+  .ach.done .checkbox { background: var(--done); border-color: var(--done); color: #fff; }
+  .ach .ach-body { flex: 1; min-width: 0; }
+  .ach .ach-text { font-size: 0.92rem; }
+  .ach .ach-hint { font-size: 0.75rem; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+  /* ── rarity badges ── */
+  .rarity { display: inline-block; font-size: 0.7rem; padding: 1px 8px; border-radius: 10px; margin-left: 6px; font-weight: 500; vertical-align: middle; }
+  .r-bronze { background: #3d2e1a; color: #c8945a; }
+  .r-star   { background: #3d3410; color: var(--gold); }
+  .r-dia    { background: #132d36; color: var(--diamond); }
+  .r-legend { background: #261a36; color: var(--legendary); }
+  .r-king   { background: #361a2a; color: #f070a0; }
+
+  /* ── milestone marker ── */
+  .milestone { display: inline-block; font-size: 0.82rem; }
+
+  /* ── toast ── */
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #2a2a2a; color: #fff; padding: 10px 22px;
+    border-radius: 22px; font-size: 0.88rem; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s; z-index: 10;
+    border: 1px solid var(--border);
+  }
+  .toast.show { opacity: 1; }
+
+  /* ── reset button ── */
+  .reset-btn {
+    display: block; margin: 24px auto; padding: 10px 28px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 22px; font-size: 0.8rem;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .reset-btn:active { background: #2a1515; border-color: #6b3a3a; color: #d07070; }
+
+  /* ── confetti (simple) ── */
+  @keyframes pop {
+    0% { transform: scale(0); opacity: 1; }
+    60% { transform: scale(1.3); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .just-unlocked { animation: pop 0.4s ease-out; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏃 跑步成就表</h1>
+  <div class="sub">从跑三走一 → 跑五走一 · 每一步都算数</div>
+</header>
+
+<div class="stats">
+  <div><span class="num" id="stat-done">0</span><span class="lbl">已达成</span></div>
+  <div><span class="num" id="stat-total">0</span><span class="lbl">总成就</span></div>
+  <div><span class="num" id="stat-pct">0%</span><span class="lbl">完成率</span></div>
+</div>
+
+<div class="progress-wrap">
+  <div class="pct"><span>总进度</span><span id="progress-label">0 / 0</span></div>
+  <div class="progress-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
+</div>
+
+<div id="sections"></div>
+
+<button class="reset-btn" onclick="resetAll()">↺ 重置全部成就</button>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── data ──
+const SECTIONS = [
+  {
+    id: "persist", icon: "🌱", title: "新手村 · 坚持类",
+    items: [
+      { t:"第一天", h:"完成第一次跑步。" },
+      { t:"三天热度", h:"一周内完成3次训练。" },
+      { t:"一周不断档", h:"连续7天保持运动（散步也算）。" },
+      { t:"半月坚持", h:"连续训练15天。" },
+      { t:"一个月", h:"连续坚持30天。" },
+      { t:"百日计划", h:"坚持100天。", r:"r-star" },
+      { t:"一周年", h:"坚持365天。", r:"r-dia" },
+    ]
+  },
+  {
+    id: "ability", icon: "🏃", title: "跑步能力",
+    items: [
+      { t:"跑5走1大师", h:"完成10次跑5走1。", r:"r-bronze" },
+      { t:"跑7走1", h:"成功完成一次。" },
+      { t:"跑10走1" },
+      { t:"跑15走1" },
+      { t:"跑20走1", r:"r-star" },
+      { t:"连续跑30分钟", r:"r-star" },
+      { t:"连续跑45分钟", r:"r-star" },
+      { t:"连续跑1小时", r:"r-dia" },
+    ]
+  },
+  {
+    id: "distance", icon: "📏", title: "距离",
+    items: [
+      { t:"第一公里" },
+      { t:"3公里" },
+      { t:"5公里", r:"r-star" },
+      { t:"8公里" },
+      { t:"10公里", r:"r-star" },
+      { t:"12公里" },
+      { t:"15公里", r:"r-star" },
+      { t:"18公里" },
+      { t:"🥉 半马", h:"21.0975km", r:"r-star" },
+      { t:"🥈 30公里", r:"r-dia" },
+      { t:"🏅 全马", h:"42.195km", r:"r-dia" },
+      { t:"👑 超越自己", h:"全马后二次挑战。", r:"r-king" },
+    ]
+  },
+  {
+    id: "weight", icon: "⚖️", title: "体重",
+    desc: "建议一个月最多解锁一次。",
+    items: [
+      { t:"69kg" },
+      { t:"68kg" },
+      { t:"67kg" },
+      { t:"⭐ 65kg", h:"第一个重要目标。", r:"r-star" },
+      { t:"63kg" },
+      { t:"60kg", r:"r-star" },
+      { t:"👑 理想体重达成", r:"r-king" },
+    ]
+  },
+  {
+    id: "body", icon: "❤️", title: "身体变化",
+    items: [
+      { t:"运动后第二天完全不酸" },
+      { t:"跑步心率稳定" },
+      { t:"左小腿不再酸痛" },
+      { t:"第一次觉得跑步轻松", r:"r-star" },
+      { t:"跑完还能聊天", r:"r-star" },
+      { t:"流汗没有累瘫" },
+    ]
+  },
+  {
+    id: "mileage", icon: "🔥", title: "总里程",
+    items: [
+      { t:"10km" },
+      { t:"25km" },
+      { t:"50km" },
+      { t:"⭐ 100km", r:"r-star" },
+      { t:"⭐⭐ 250km", r:"r-star" },
+      { t:"⭐⭐⭐ 500km", r:"r-star" },
+      { t:"💎 1000km", r:"r-dia" },
+      { t:"👑 5000km", r:"r-king" },
+    ]
+  },
+  {
+    id: "special", icon: "🌦️", title: "特殊挑战",
+    items: [
+      { t:"🌙 夜跑一次" },
+      { t:"🌅 日出跑一次" },
+      { t:"🌄 日落跑一次" },
+      { t:"🌧️ 小雨跑一次" },
+      { t:"❄️ 冬天跑一次" },
+      { t:"☀️ 夏天40℃坚持训练", h:"注意安全" },
+      { t:"🎧 听着最喜欢的BGM跑完全程" },
+      { t:"📸 打卡10条不同路线", r:"r-star" },
+    ]
+  },
+  {
+    id: "mental", icon: "🧠", title: "心理成就",
+    items: [
+      { t:"⭐ 今天本来不想跑，但还是去了。", r:"r-star" },
+      { t:"⭐⭐ 状态很差，但坚持完成了。", r:"r-star" },
+      { t:"⭐⭐⭐ 连续一个月没有找借口。", r:"r-star" },
+      { t:"💎 一年后回来看今天的自己。", r:"r-dia" },
+      { t:"👑 跑步已经成为生活的一部分。", r:"r-king" },
+    ]
+  },
+  {
+    id: "hidden", icon: "🏆", title: "隐藏成就",
+    items: [
+      { t:"🎉 第一双跑鞋退役" },
+      { t:"🎉 第一次有人夸你瘦了" },
+      { t:"🎉 腰带缩了一格" },
+      { t:"🎉 买小一码衣服" },
+      { t:"🎉 第一次照镜子觉得自己帅了" },
+      { t:"🎉 爬楼梯不喘" },
+      { t:"🎉 跑步认识新朋友" },
+      { t:"🎉 第一次完成官方赛事" },
+      { t:"🎉 获得第一块完赛奖牌", r:"r-star" },
+    ]
+  },
+  {
+    id: "final", icon: "👑", title: "最终隐藏成就",
+    items: [
+      { t:"《从来不是天赋》", h:"从「跑20分钟就跑不动」的人，变成能够完成全程马拉松的人。", r:"r-king" },
+    ]
+  },
+  {
+    id: "legendary", icon: "🌌", title: "传奇成就",
+    items: [
+      { t:"《一步一步》", h:"从跑三走一到跑五走一。不是天赋，是一步一步走出来的。减脂路上的每一步，都算数。", r:"r-legend" },
+    ]
+  },
+];
+
+// ── state ──
+const KEY = "running_achievements_v1";
+let checked = {};
+
+function load() {
+  try { checked = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e) { checked = {}; }
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(checked)); }
+
+function toggle(id) {
+  checked[id] = !checked[id];
+  save();
+  renderAll();
+  const el = document.getElementById(id);
+  if (el && checked[id]) el.classList.add("just-unlocked");
+  toast(checked[id] ? "✅ 成就解锁！" : "已取消勾选");
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._tid); t._tid = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+function resetAll() {
+  if (confirm("确定要重置全部成就吗？此操作不可撤销。")) {
+    checked = {}; save(); renderAll();
+    toast("🔄 已重置全部成就");
+  }
+}
+
+// ── render ──
+function key(secId, itemText) {
+  return (secId + "|" + itemText).replace(/[^a-zA-Z0-9一-鿿㐀-䶿\|]/g, "_");
+}
+
+function renderAll() {
+  let total = 0, done = 0;
+  const sectionsEl = document.getElementById("sections");
+  let html = "";
+
+  SECTIONS.forEach((sec, si) => {
+    const kids = sec.items.map(it => key(sec.id, it.t));
+    const secDone = kids.filter(k => checked[k]).length;
+    const secTotal = sec.items.length;
+    total += secTotal; done += secDone;
+    const collapsed = si > 0 && secDone === 0; // auto-collapse untouched sections except first
+
+    html += `<div class="section${collapsed ? " collapsed" : ""}" id="sec-${sec.id}">`;
+    html += `<div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">`;
+    html += `<span class="icon">${sec.icon}</span>${sec.title}`;
+    html += `<span class="count">${secDone}/${secTotal}</span>`;
+    html += `<span class="arrow">▼</span>`;
+    html += `</div>`;
+    html += `<div class="section-body">`;
+    if (sec.desc) html += `<div class="desc">${sec.desc}</div>`;
+
+    sec.items.forEach((it, i) => {
+      const kid = kids[i];
+      const isDone = checked[kid];
+      const cls = isDone ? "ach done" : "ach";
+      const checkmark = isDone ? "✓" : "";
+      const rarityTag = it.r ? `<span class="rarity ${it.r}">${rarityLabel(it.r)}</span>` : "";
+
+      html += `<div class="${cls}" id="${kid}" onclick="toggle('${kid}')">`;
+      html += `<div class="checkbox">${checkmark}</div>`;
+      html += `<div class="ach-body">`;
+      html += `<div class="ach-text"><span class="milestone">${it.t}</span>${rarityTag}</div>`;
+      if (it.h) html += `<div class="ach-hint">${it.h}</div>`;
+      html += `</div></div>`;
+    });
+
+    html += `</div></div>`;
+  });
+
+  sectionsEl.innerHTML = html;
+
+  // stats
+  document.getElementById("stat-done").textContent = done;
+  document.getElementById("stat-total").textContent = total;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById("stat-pct").textContent = pct + "%";
+  document.getElementById("progress-label").textContent = done + " / " + total;
+  document.getElementById("progress-fill").style.width = pct + "%";
+}
+
+function rarityLabel(r) {
+  const map = { "r-bronze":"铜", "r-star":"⭐", "r-dia":"💎", "r-legend":"🌌", "r-king":"👑" };
+  return map[r] || "";
+}
+
+// ── init ──
+load();
+renderAll();
+</script>
+</body>
+</html>
