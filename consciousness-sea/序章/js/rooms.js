@@ -11,8 +11,20 @@ let roomDialogueIndex = 0;
 let roomCombatWaves = 0;     // 战斗房间剩余波次
 let roomCombatAllDone = false; // 全部波次清完后的1秒延迟标记
 let roomCombatWaveCleared = false;
+let splitChildrenRemaining = 0; // 分裂残响：剩余分裂残片数
 let roomTreasureSpawned = false;
 let roomTreasureWord = null; // 金色装备字对象
+let roomFakeWeapons = [];
+let currentEventScenario = null;
+let eventOptionsActive = false;
+let eventOptionsSettled = false;
+let eventOptions = [];
+let eventResolved = false;
+let eventMonsterDefeated = false;
+let eventMonsterWaves = 0;
+let eventMonsterWavePending = false;
+let eventMonsterReward = null;
+let restBubbleActive = false;
 
 // ═══════════════ 入口 ═══════════════
 
@@ -23,6 +35,8 @@ function startRoom(room) {
   roomCombatWaves = 0;
   roomCombatWaveCleared = false;
   roomCombatAllDone = false;
+  splitChildrenRemaining = 0;   // 分裂残响：剩余分裂残片数
+  enemyProjectiles = [];        // 清空上一房间的普通弹幕
   roomTreasureSpawned = false;
   roomTreasureWord = null;
   roomFakeWeapons = [];
@@ -58,6 +72,7 @@ function startRoom(room) {
     case 'event':     startEventRoom(room); break;
     case 'boss':      startBossRoom(room); break;
     case 'safe_house':startSafeHouseRoom(room); break;
+    case 'shop':      startShopRoom(room); break;
   }
 }
 
@@ -86,6 +101,8 @@ function checkRoomComplete() {
       if (typeof fusionActive !== 'undefined' && fusionActive) return false;
       // Boss战结束（战败时Tutorial.phase为DEFEAT，不触发完成，由战败流程处理）
       return !bossActive && !Dialogue.active && (typeof Tutorial === 'undefined' || Tutorial.phase !== 'defeat');
+    case 'shop':
+      return !shopOpen && !Dialogue.active;
     case 'safe_house':
       return !Dialogue.active && roomDialogueIndex >= roomDialogueQueue.length;
     default:
@@ -119,10 +136,13 @@ function startStartRoom(room) {
 /** 战斗 — 噪点波次 */
 function startCombatRoom(room) {
   const waves = room.waves || 3;
+  // 伤害 = 难度基础伤害 × 敌人类型倍率（enemyDmgMult）
+  const baseDmg = (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].enemyDmg : [5,8];
+  const dmgMult = room.enemyDmgMult || 1;
   const baseStats = {
     enemyHP: room.enemyHP || 40,
     enemyInterval: room.enemyInterval || 6.0,
-    enemyDmg: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].enemyDmg : [5,8],
+    enemyDmg: [Math.round(baseDmg[0] * dmgMult), Math.round(baseDmg[1] * dmgMult)],
     noiseRate: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].noiseRate : 0.15,
     speed: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].speed : 0.8,
   };
@@ -137,6 +157,12 @@ function startCombatRoom(room) {
   const interval = modified.enemyInterval;
   const hard = room.hardMode || false;
 
+  // 图鉴：记录敌人遭遇（按攻击类型区分）
+  if (typeof registerEnemy === 'function') {
+    const ENEMY_REG_MAP = { bash:'noise_shard', volley:'noise_volley', rain:'noise_rain', track:'noise_track', shield:'noise_shield', split:'noise_split' };
+    registerEnemy(room.enemyType ? (ENEMY_REG_MAP[room.enemyType] || 'noise_shard') : (hard ? 'strengthened_noise' : 'noise_shard'));
+  }
+
   roomCombatWaves = waves;
 
   // 设置战斗参数
@@ -147,12 +173,12 @@ function startCombatRoom(room) {
     enemyTimer = enemyInterval = interval;
   }
   if (typeof updateEnemyUI === 'function') updateEnemyUI();
-  // 重置敌人名称和HP条样式 + 生成敌人实体
+  // 重置敌人名称和HP条样式 + 生成敌人实体（名字对应攻击方式）
   const enemyName = document.getElementById('enemy-name');
-  if (enemyName) enemyName.textContent = hard ? '强化噪点' : '噪点';
+  if (enemyName) enemyName.textContent = room.label || (hard ? '强化噪点' : '噪点');
   const enemyHPFill = document.getElementById('enemy-hp-fill');
   if (enemyHPFill) enemyHPFill.style.background = '';
-  if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(hard);
+  if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(hard, room.enemyType);
 
   // 进入战斗阶段
   if (typeof Tutorial !== 'undefined') {
@@ -172,9 +198,10 @@ function startCombatRoom(room) {
   // 初始文字
   if (typeof balanceWords === 'function') balanceWords();
 
-  // 波次对话
+  // 波次对话（第一章肉鸽精简：直接开打不播对白，stage-hint 已提示；序章保留零引导）
   const hardText = hard ? '这里的噪点更加狂暴。别放松。' : '';
-  roomDialogueQueue = [
+  const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  roomDialogueQueue = inCh1 ? [] : [
     { mode:'float', speaker:'零', text:`${room.label}。${room.desc}一共${waves}波，集中精神。${hardText}` },
   ];
   playRoomDialogue();
@@ -188,7 +215,33 @@ function checkCombatWave() {
   // 敌人刚被击败 → 标记本波清完
   if (enemyHP <= 0 && !roomCombatWaveCleared) {
     roomCombatWaveCleared = true;
-    roomCombatWaves--;
+
+    // ── 分裂残响：主敌人被击败 → 分裂成 2 个残片（不扣波次）──
+    if (currentEnemyType === 'split' && splitChildrenRemaining === 0) {
+      splitChildrenRemaining = 2;
+      setTimeout(() => {
+        if (!currentDiveRoom || currentDiveRoom.type !== 'combat') return;
+        spawnSplitChild();
+        roomCombatWaveCleared = false;
+      }, 1000);
+      return;
+    }
+    // ── 分裂残片被击败 ──
+    if (currentEnemyType === 'split' && splitChildrenRemaining > 0) {
+      splitChildrenRemaining--;
+      if (splitChildrenRemaining > 0) {
+        setTimeout(() => {
+          if (!currentDiveRoom || currentDiveRoom.type !== 'combat') return;
+          spawnSplitChild();
+          roomCombatWaveCleared = false;
+        }, 1000);
+        return;
+      }
+      splitChildrenRemaining = 0;
+      roomCombatWaves--;
+    } else {
+      roomCombatWaves--;
+    }
 
     if (roomCombatWaves > 0) {
       // 延迟刷新下一波
@@ -200,7 +253,7 @@ function checkCombatWave() {
         if (typeof updateEnemyUI === 'function') updateEnemyUI();
         if (typeof balanceWords === 'function') balanceWords();
         if (typeof Tutorial !== 'undefined') Tutorial.enterPhase(PHASE.BATTLE);
-        if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(currentDiveRoom.hardMode);
+        if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(currentDiveRoom.hardMode, currentDiveRoom.enemyType);
         roomCombatWaveCleared = false;
         // 波次提示
         if (typeof particles !== 'undefined' && typeof W !== 'undefined' && typeof H !== 'undefined') {
@@ -214,27 +267,51 @@ function checkCombatWave() {
     } else {
       // 全部波次完成 — 1秒等待后再进行奖励/返回判定
       roomCombatAllDone = false;
+      // 碎片奖励
+      if (typeof grantShards === 'function') {
+        grantShards(SHARD_REWARDS.COMBAT_CLEAR, W*0.5, H*0.35);
+      }
       // 冻结敌人，防止0血怪物继续攻击
       enemyTimer = enemyInterval = 999;
       document.getElementById('enemy-zone').style.opacity = '0';
       setTimeout(() => { roomCombatAllDone = true; }, 1000);
-      // 胜利对话
+      // 胜利对话（第一章肉鸽零不出现 → 男主独白）
       setTimeout(() => {
         roomDialogueIndex = 0;
-        roomDialogueQueue = [
-          { mode:'float', speaker:'零',
-            text:'干净利落。你的战斗本能比任何训练生都强——就好像已经做过千百次。' },
-          { mode:'plain', text:'（主角低头看着自己的手。确实，这些动作完全不需要思考。）' },
-        ];
-        if (currentDiveRoom && currentDiveRoom.hardMode) {
-          roomDialogueQueue.push(
-            { mode:'float', speaker:'零', text:'越往深处，噪点越强。前面应该快到目标位置了。' }
-          );
+        if (typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap) {
+          // 第一章：战斗结束不播对白，直接回地图
+          roomDialogueQueue = [];
+        } else {
+          roomDialogueQueue = [
+            { mode:'float', speaker:'零',
+              text:'干净利落。你的战斗本能比任何训练生都强——就好像已经做过千百次。' },
+            { mode:'plain', text:'（主角低头看着自己的手。确实，这些动作完全不需要思考。）' },
+          ];
+          if (currentDiveRoom && currentDiveRoom.hardMode) {
+            roomDialogueQueue.push(
+              { mode:'float', speaker:'零', text:'越往深处，噪点越强。前面应该快到目标位置了。' }
+            );
+          }
         }
         playRoomDialogue();
       }, 800);
     }
   }
+}
+
+/** 分裂残响：生成一个分裂残片（小敌人，HP减半，间隔更短） */
+function spawnSplitChild() {
+  const hp = currentDiveRoom ? (currentDiveRoom.enemyHP || 40) : 40;
+  enemyHP = enemyMaxHP = Math.floor(hp / 2) + Math.floor(Math.random() * 5);
+  enemyTimer = enemyInterval = ((currentDiveRoom && currentDiveRoom.enemyInterval) || 6.0) * 0.7;
+  if (typeof updateEnemyUI === 'function') updateEnemyUI();
+  if (typeof balanceWords === 'function') balanceWords();
+  if (typeof Tutorial !== 'undefined') Tutorial.enterPhase(PHASE.BATTLE);
+  if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(false, 'split');
+  if (typeof particles !== 'undefined' && typeof W !== 'undefined' && typeof H !== 'undefined') {
+    particles.push(new DamageText(W * 0.5, H * 0.3, '分裂！', '#ff9966'));
+  }
+  if (typeof Sound !== 'undefined') Sound.anomaly();
 }
 
 /** 静流 — 满血 + 零的对话 + 绿色治愈泡泡 */
@@ -265,7 +342,10 @@ function startRestRoom(room) {
   restBubbleActive = true;
   restBubbleTimer = 0;
 
-  roomDialogueQueue = [
+  const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  roomDialogueQueue = inCh1 ? [
+    { mode:'plain', text:'（静流。暖光裹住全身，意识在缓缓回满。）' },
+  ] : [
     { mode:'float', speaker:'零',
       text:'意识之海里偶尔能遇到这种「静流」——纯净的、未被污染的信息流。像深海中的暖流。歇一会儿。' },
     { mode:'plain', text:'（暖绿色的光芒安静地笼罩四周。零的粒子在柔光中微微荡漾，像水下的星光。）' },
@@ -279,9 +359,8 @@ function startRestRoom(room) {
 }
 
 // 治愈泡泡控制
-let restBubbleActive = false;
 let restBubbleTimer = 0;
-const HEALING_CHARS = ['愈','复','愈','安','静','愈','暖','愈','愈','宁','息','愈','生','愈'];
+const HEALING_CHARS = ['安','复','静','暖','宁','息','生','润','养','补'];
 
 /** 在静流房间中生成治愈泡泡（由 main.js 每帧调用） */
 function updateRestBubbles(dt) {
@@ -318,6 +397,8 @@ const FAKE_WEAPON_NAMES = ['碎梦','焚世','霜华','星陨','幽光','断念'
 
 /** 遗落装备 — 残响之影 + 真假装备辨识 */
 function startTreasureRoom(room) {
+  // 图鉴：记录残响之影
+  if (typeof registerEnemy === 'function') registerEnemy('echo_shadow');
   // 残响之影：无敌，对话期间不攻击
   enemyHP = enemyMaxHP = -1;
   enemyTimer = enemyInterval = 99; // 对话结束前冻结
@@ -334,9 +415,12 @@ function startTreasureRoom(room) {
   const stageHint = document.getElementById('stage-hint');
   if (stageHint) { stageHint.style.opacity = '1'; stageHint.textContent = '对话中……'; }
 
-  // 不生成战斗文字（此房间无攻/防/愈字）
+  // 不生成战斗文字（此房间无攻/防/符字）
 
-  roomDialogueQueue = [
+  const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  roomDialogueQueue = inCh1 ? [
+    { mode:'plain', text:'（前任潜航者的遗物，被残响之影守护着。它会模仿词元外观——找到真货，拿了就走。）' },
+  ] : [
     { mode:'tremble', speaker:'零',
       text:'那是前任潜航者留下的词元结晶——但这股压迫感……是残响之影。' },
     { mode:'tremble', speaker:'零',
@@ -424,8 +508,7 @@ function spawnFakeWeapons() {
   if (stageHint) stageHint.textContent = '找出真正的装备！不宜久留！';
 }
 
-// 假装备池
-let roomFakeWeapons = [];
+// 假装备池（roomFakeWeapons 已在文件顶部声明）
 
 // 装备切换提示
 let equipPrompt = null; // { itemType, itemKey, itemData, x, y, options }
@@ -520,6 +603,8 @@ function handleEquipPromptClick(opt) {
         playerArmor = p.itemData;
         if (typeof playerDefense !== 'undefined') playerDefense = playerArmor.defense || 0;
       }
+    } else if (p.itemType === 'talisman') {
+      if (typeof playerTalisman !== 'undefined') playerTalisman = p.itemData;
     }
     if (typeof updatePlayerUI === 'function') updatePlayerUI();
     if (typeof particles !== 'undefined') {
@@ -534,7 +619,10 @@ function handleEquipPromptClick(opt) {
   hideEquipPrompt();
   // 继续房间流程
   if (roomTreasureWord) roomTreasureWord = null;
-  roomDialogueQueue = [
+  const inCh1Equip = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  roomDialogueQueue = inCh1Equip ? [
+    { mode:'plain', text: opt.action === 'replace' ? '（换上装备。词元在指尖微微发烫。）' : '（还是原来的顺手。收好，继续走。）' },
+  ] : [
     { mode:'float', speaker:'零', text: opt.action === 'replace' ? '不错的选择。继续前进吧。' : '也好。适合自己的才是最好的。' },
   ];
   roomDialogueIndex = 0;
@@ -566,12 +654,15 @@ function spawnTreasureWord() {
   // 随机选一件武器或防具（非初始装备）
   const wpnKeys = Object.keys(EQUIPMENT.weapons).filter(k => k !== 'beginner_brush');
   const armKeys = Object.keys(EQUIPMENT.armors).filter(k => k !== 'thin_silk');
-  const allKeys = [...wpnKeys.map(k => ({ key:k, type:'weapon' })), ...armKeys.map(k => ({ key:k, type:'armor' }))];
+  const talKeys = Object.keys(EQUIPMENT.talismans || {});
+  const allKeys = [...wpnKeys.map(k => ({ key:k, type:'weapon' })), ...armKeys.map(k => ({ key:k, type:'armor' })), ...talKeys.map(k => ({ key:k, type:'talisman' }))];
   const pick = allKeys[Math.floor(Math.random() * allKeys.length)];
 
   const item = pick.type === 'weapon'
     ? EQUIPMENT.weapons[pick.key]
-    : EQUIPMENT.armors[pick.key];
+    : pick.type === 'talisman'
+      ? EQUIPMENT.talismans[pick.key]
+      : EQUIPMENT.armors[pick.key];
 
   const cx = typeof W !== 'undefined' ? W * 0.5 : 600;
   const cy = typeof H !== 'undefined' ? H * 0.45 : 400;
@@ -670,13 +761,20 @@ const EVENT_SCENARIOS = [
 
 function startEventRoom(room) {
   const scenario = EVENT_SCENARIOS[Math.floor(Math.random() * EVENT_SCENARIOS.length)];
-  roomDialogueQueue = [...scenario.dialogue];
+  const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  if (inCh1) {
+    // 第一章肉鸽：零不在，男主独自面对
+    roomDialogueQueue = [
+      { mode:'plain', text:'（意识结晶。里面封着前人留下的装备。）' },
+      { mode:'float', speaker:'我', text:'……开，还是绕开？' },
+    ];
+  } else {
+    roomDialogueQueue = [...scenario.dialogue];
+  }
   // 保存场景引用供 spawnEventOptions 使用
   currentEventScenario = scenario;
   playRoomDialogue();
 }
-
-let currentEventScenario = null;
 
 /** 生成漂浮选项（对话结束后调用） */
 function spawnEventOptions() {
@@ -694,15 +792,8 @@ function spawnEventOptions() {
   }));
 }
 
-let eventOptionsActive = false;
-let eventOptionsSettled = false;
-let eventOptionTimer = 0;
-let eventOptions = [];
-let eventResolved = false;
-
 function updateEventOptions(dt) {
   if (!eventOptionsActive || eventOptionsSettled) return;
-  eventOptionTimer += dt;
   eventOptions.forEach(opt => {
     opt.age += dt;
     if (opt.age < opt.fadeIn) {
@@ -767,6 +858,8 @@ function handleEventChoice(opt) {
   eventResolved = true; // 防止重复生成
 
   if (opt.action === 'force') {
+    // 碎片奖励
+    if (typeof grantShards === 'function') grantShards(SHARD_REWARDS.EVENT_FORCE, W*0.5, H*0.5);
     // 威胁+1
     if (typeof threatLevel !== 'undefined') threatLevel = Math.min(10, threatLevel + 1);
     if (Math.random() < 0.7) {
@@ -779,6 +872,9 @@ function handleEventChoice(opt) {
           particles.push(new HitParticle(W*0.5, H*0.5, '#ffdd44', '◆'));
         }
       }
+      // 标记：无怪物战斗，直接完成
+      eventMonsterDefeated = true;
+      eventMonsterWaves = 0;
       showEquipPrompt('weapon', key, item);
     } else {
       // 30%：惊扰强化怪物，战胜得武器
@@ -809,7 +905,10 @@ function handleEventChoice(opt) {
       eventMonsterReward = null;
 
       roomDialogueIndex = 0;
-      roomDialogueQueue = [
+      const inCh1Force = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+      roomDialogueQueue = inCh1Force ? [
+        { mode:'float', speaker:'我', text:'结晶里的东西醒了——是残响。击败它，装备就是我的。', speed:30 },
+      ] : [
         { mode:'float', speaker:'零', text:'结晶里的东西醒了——是残响。击败它，装备就是你的。', speed:30 },
       ];
       playRoomDialogue();
@@ -817,23 +916,26 @@ function handleEventChoice(opt) {
   } else {
     // 绕过去 — 威胁-1
     if (typeof threatLevel !== 'undefined') threatLevel = Math.max(0, threatLevel - 1);
+    // 少量碎片
+    if (typeof grantShards === 'function') grantShards(SHARD_REWARDS.EVENT_SKIP, W*0.5, H*0.5);
     if (typeof particles !== 'undefined') {
       for (let i = 0; i < 10; i++) {
         particles.push(new HitParticle(W*0.5, H*0.5, '#88aacc', '·'));
       }
     }
+    // 关键：未生成怪物，视为"无怪可击"。否则 checkRoomComplete 会因 enemyHP=999 判定房间永不完成
+    eventMonsterDefeated = true;
+    eventMonsterWaves = 0;
     roomDialogueIndex = 0;
-    roomDialogueQueue = [
+    const inCh1Skip = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+    roomDialogueQueue = inCh1Skip ? [
+      { mode:'float', speaker:'我', text:'……还是算了。不值得为不确定的东西冒险。走吧。' },
+    ] : [
       { mode:'float', speaker:'零', text:'……明智的选择。不值得为不确定的东西冒险。走吧。' },
     ];
     playRoomDialogue();
   }
 }
-
-let eventMonsterDefeated = false;
-let eventMonsterWaves = 0;
-let eventMonsterWavePending = false;
-let eventMonsterReward = null;
 
 /** 检测事件房间的怪物是否被击败（支持多波次，帧计数器驱动） */
 function checkEventMonster() {
@@ -851,6 +953,8 @@ function checkEventMonster() {
       if (typeof updateEnemyUI === 'function') updateEnemyUI();
       if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(true);
       document.getElementById('enemy-zone').style.opacity = '1';
+      const enemyNameEl = document.getElementById('enemy-name');
+      if (enemyNameEl) enemyNameEl.textContent = '被惊扰的残响';
       const stageHint = document.getElementById('stage-hint');
       if (stageHint) {
         const totalDone = 2 - eventMonsterWaves;
@@ -887,9 +991,14 @@ function checkEventMonster() {
   }
 }
 
-/** Boss「遗」*/
+/** Boss 房间 — 按 room.bossKey 分发不同 Boss（遗憾主题：忆/执/遗憾等）*/
 function startBossRoom(room) {
   if (!room.bossKey) return;
+
+  // 图鉴：记录Boss遭遇
+  if (typeof registerEnemy === 'function') {
+    registerEnemy('boss_' + room.bossKey);
+  }
 
   // 冻结普通敌人，清除前一个房间的敌人实体
   enemyHP = enemyMaxHP = 999;
@@ -897,14 +1006,24 @@ function startBossRoom(room) {
   if (typeof enemyEntity !== 'undefined') enemyEntity = null;
   document.getElementById('enemy-zone').style.opacity = '0';
 
-  // 入场对话
-  roomDialogueQueue = [
+  // 从配置取Boss名/部件（通用化，避免硬编码遗）
+  const bc = (typeof BOSS_CONFIG !== 'undefined') ? BOSS_CONFIG[room.bossKey] : null;
+  const bossName = bc ? bc.name : (room.label || 'Boss');
+  const lc = bc ? bc.left.char : '';
+  const rc = bc ? bc.right.char : '';
+  const lcDesc = lc ? (lc + '与' + rc) : '巨大汉字';
+
+  // 入场对话（第一章肉鸽零不在 → 男主独白）
+  const inCh1Boss = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  roomDialogueQueue = inCh1Boss ? [
+    { mode:'shake', speaker:'我', text:'……「' + bossName + '」。来了。' },
+  ] : [
     { mode:'tremble', speaker:'零',
-      text:'来了。那个波形……就是它。「遗」。' },
+      text:'来了。那个波形……就是它。「' + bossName + '」。' },
     { mode:'plain',
-      text:'（前方的空间开始扭曲。两个汉字部件从黑暗中凝聚成形——辶与贵，金光刺目。）' },
+      text:'（前方的空间开始扭曲。两个汉字部件从黑暗中凝聚成形——' + lcDesc + '。）' },
     { mode:'shake', speaker:'零',
-      text:'辶为疾走，贵为珍宝。两者合一……小心！！' },
+      text: lc ? (lc + '为意象，' + rc + '为执念……小心！！') : '……小心！！' },
   ];
 
   // BGM: Boss战（boss.js initBoss也会触发，这里提前切换）
@@ -912,14 +1031,14 @@ function startBossRoom(room) {
 
   // 播放对话，对话结束后初始化Boss
   roomDialogueQueue.push({
-    mode:'float', speaker:'零', text:'……',
+    mode:'float', speaker: inCh1Boss ? '我' : '零', text:'……',
     onComplete() {
       if (typeof initBoss === 'function') {
-        initBoss('yi');
+        initBoss(room.bossKey);
       }
       // 更新提示文字
       const hint = document.getElementById('stage-hint');
-      if (hint) { hint.style.opacity = '1'; hint.textContent = '遗 · 深海守护者'; }
+      if (hint) { hint.style.opacity = '1'; hint.textContent = bossName + ' · 深海守护者'; }
     }
   });
   playRoomDialogue();
@@ -941,7 +1060,11 @@ function startSafeHouseRoom(room) {
     if (typeof updatePlayerUI === 'function') updatePlayerUI();
   }
 
-  roomDialogueQueue = [
+  const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  roomDialogueQueue = inCh1 ? [
+    { mode:'plain', text:'（零的领域。零的投影虚弱得无法凝形，只剩一缕微光。）' },
+    { mode:'whisper', speaker:'我', text:'……再撑一下。我一定会找到你。' },
+  ] : [
     { mode:'plain',
       text:'（温暖的光。四周是由文字粒子编织的墙壁，柔软得像母亲的怀抱。）' },
     { mode:'plain',
@@ -965,7 +1088,62 @@ function startSafeHouseRoom(room) {
   playRoomDialogue();
 }
 
-// ═══════════════ 对话序列 ═══════════════
+// ═══════════════ 商店房间 ═══════════════
+
+let shopRoomEntered = false;
+
+function startShopRoom(room) {
+  // BGM: 安全屋音乐
+  if (typeof Sound !== 'undefined' && Sound.playBGM) Sound.playBGM('safehouse', 1.5);
+
+  // 显示阶段提示
+  const hint = document.getElementById('stage-hint');
+  if (hint) { hint.style.opacity = '1'; hint.textContent = '意识市集 · 碎片共鸣点'; }
+
+  // 隐藏战斗UI
+  document.getElementById('enemy-zone').style.opacity = '0';
+  document.getElementById('player-zone').style.opacity = '1';
+  if (typeof updatePlayerUI === 'function') updatePlayerUI();
+
+  // 重置威胁等级
+  if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined') {
+    threatLevel = THREAT.BASE[difficulty] || 2;
+  }
+
+  // 满血
+  if (typeof playerHP !== 'undefined') {
+    playerHP = playerMaxHP || 100;
+    if (typeof updatePlayerUI === 'function') updatePlayerUI();
+  }
+
+  // 温暖粒子
+  if (typeof particles !== 'undefined' && typeof W !== 'undefined' && typeof H !== 'undefined') {
+    for (let i = 0; i < 20; i++) {
+      const p = new HitParticle(W*0.5 + (Math.random()-0.5)*150, H*0.5 + (Math.random()-0.5)*100, '#ffcc88', '·');
+      p.vx *= 0.2; p.vy *= 0.2; p.size = 4 + Math.random() * 8; p.life = 30 + Math.random() * 40;
+      p.gravity = -0.01;
+      particles.push(p);
+    }
+  }
+
+  shopRoomEntered = true;
+
+  // 入场对话（第一章肉鸽零不在 → 男主独白）
+  const inCh1Shop = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  roomDialogueQueue = inCh1Shop ? [
+    { mode:'plain', text:'（意识共鸣点。碎片可以换装备。）' },
+  ] : [
+    { mode:'float', speaker:'零',
+      text:'这里有一个意识共鸣点……是前人留下的交易场。碎片在这里可以换取装备。' },
+    { mode:'float', speaker:'零',
+      text:'看看有什么好东西。别客气，这里的装备比你手上的好多了。' },
+    { mode:'float', speaker:'零',
+      text:'……不过碎片只在这一层有效。潜航结束就消失了。', speed:40 },
+  ];
+  playRoomDialogue();
+}
+
+// 推进商店房间对话（在 advanceRoomDialogue 中检测）
 
 function playRoomDialogue() {
   if (roomDialogueIndex >= roomDialogueQueue.length) return;
@@ -995,6 +1173,15 @@ function advanceRoomDialogue() {
 
   // 对话全部结束 → 处理特殊逻辑
   if (roomDialogueIndex >= roomDialogueQueue.length) {
+    // Shop房间：对话结束后打开商店
+    if (currentDiveRoom.type === 'shop' && shopRoomEntered && !shopOpen) {
+      shopRoomEntered = false;
+      if (typeof openShop === 'function') {
+        const hint = document.getElementById('stage-hint');
+        if (hint) hint.style.opacity = '0';
+        openShop();
+      }
+    }
     // Event房间：生成选择肢
     if (currentDiveRoom.type === 'event' && !eventOptionsActive && !eventResolved) {
       spawnEventOptions();

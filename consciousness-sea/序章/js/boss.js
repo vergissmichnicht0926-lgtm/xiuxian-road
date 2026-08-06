@@ -45,6 +45,58 @@ const BOSS_CONFIG = {
       // 技能3: 遗·归尘爆 — 撒炸弹+延迟全屏引爆
       { type:'delayed_burst', bombs:6, burstCount:8, damage:13, color:'#ffdd44', layoutTime:2.0, warnTime:1.0, bombSpeed:1.5 },
     ]
+  },
+
+  // ══ 第一章·三层肉鸽 Boss（遗憾主题）══
+  // 第1层「浅层」· 追忆
+  recall: {
+    name: '忆', hp: 300,
+    left:  { char:'忄', color:'#5ac8fa', glow:'#2e86c1' },
+    right: { char:'乙', color:'#7dd7ff', glow:'#4aa7e8' },
+    partSize: 75, splitDist: 150, minDist: 26,
+    chargeTime: 6.5, vulnerableTime: 3.2, attackCooldown: 0.7,
+    attacks: [
+      // 追忆碎片：弹跳冲撞
+      { type:'left_charge', speed:14, maxSpeed:22, damage:22, color:'#5ac8fa', bounces:2 },
+      // 回忆漩涡：引力场 + 螺旋弹
+      { type:'gravity_field', pattern:'spiral', count:8, speed:1.5, maxSpeed:2.5, damage:10, color:'#7dd7ff', gravityIntensity:0.6, duration:5.0, bulletSize:20, bulletInterval:0.3 },
+      // 记忆枷锁：心锁 + 雨
+      { type:'heart_lock', pattern:'rain', count:5, speed:1.8, maxSpeed:2.8, damage:9, color:'#5ac8fa', lockRadius:160, duration:3.2, bulletSize:18, bulletInterval:0.4 },
+    ]
+  },
+  // 第2层「中层」· 执念
+  obsess: {
+    name: '执', hp: 500,
+    left:  { char:'扌', color:'#ff8844', glow:'#cc5522' },
+    right: { char:'丸', color:'#ffaa55', glow:'#dd7722' },
+    partSize: 80, splitDist: 160, minDist: 28,
+    chargeTime: 6.0, vulnerableTime: 3.0, attackCooldown: 0.65,
+    attacks: [
+      // 执念之雨：雨弹幕
+      { type:'right_bullet', pattern:'rain', count:6, speed:2.0, maxSpeed:3.2, damage:12, color:'#ffaa55', duration:4.0, bulletSize:24, bulletInterval:0.35 },
+      // 执念炸裂：归尘爆
+      { type:'delayed_burst', bombs:5, burstCount:7, damage:11, color:'#ff8844', layoutTime:1.8, warnTime:1.0, bombSpeed:1.4 },
+      // 穷追不舍：残影冲撞（2重）
+      { type:'left_charge', speed:18, maxSpeed:26, damage:28, color:'#ff8844', bounces:0, afterimages:2, afterimageInterval:0.5 },
+    ]
+  },
+  // 第3层「深层」· 遗憾本体（独立设计，集追忆与执念于一体）
+  regretful: {
+    name: '遗憾', hp: 900,
+    left:  { char:'心', color:'#ff5544', glow:'#cc3322' },
+    right: { char:'贵', color:'#ffdd66', glow:'#ddbb33' },
+    partSize: 85, splitDist: 170, minDist: 30,
+    chargeTime: 6.0, vulnerableTime: 2.8, attackCooldown: 0.6,
+    attacks: [
+      // 遗憾追忆：残影冲撞（4重）
+      { type:'left_charge', speed:20, maxSpeed:28, damage:32, color:'#ff6655', bounces:0, afterimages:4, afterimageInterval:0.45 },
+      // 遗憾漩涡：引力场 + 螺旋
+      { type:'gravity_field', pattern:'spiral', count:12, speed:1.7, maxSpeed:3.0, damage:14, color:'#ffaa55', gravityIntensity:0.75, duration:6.0, bulletSize:26, bulletInterval:0.3 },
+      // 遗憾之雨：雨弹幕
+      { type:'right_bullet', pattern:'rain', count:8, speed:2.3, maxSpeed:3.6, damage:15, color:'#ffdd66', duration:4.5, bulletSize:28, bulletInterval:0.36 },
+      // 遗憾归尘：归尘爆
+      { type:'delayed_burst', bombs:7, burstCount:9, damage:14, color:'#ffcc44', layoutTime:2.0, warnTime:1.0, bombSpeed:1.6 },
+    ]
   }
 };
 
@@ -71,6 +123,7 @@ function initBoss(key) {
   const mult = (typeof difficulty !== 'undefined') ? (diffMult[difficulty] || 1.0) : 1.0;
   const hp = Math.floor(cfg.hp * mult);
   bossState = {
+    _bossKey: key,
     phase: BOSS_PHASE.ENTRANCE, hp: hp, maxHP: hp, timer: 0,
     left:  makePart(cx - cfg.splitDist*0.5, -120, cfg.partSize),
     right: makePart(cx + cfg.splitDist*0.5, -140, cfg.partSize),
@@ -101,6 +154,10 @@ function initBoss(key) {
 function updateBoss(dt) {
   if (!bossActive || !bossState) return;
   const s = bossState, cfg = bossConfig;
+  // 二阶段覆盖值存于bossState，避免污染共享BOSS_CONFIG（重试/再战互不影响）
+  const splitDist  = s._phase2 ? 220 : cfg.splitDist;
+  const chargeTime = s._phase2 ? 5.0 : cfg.chargeTime;
+  const vulnerableTime = s._phase2 ? 2.5 : cfg.vulnerableTime;
   s.animTimer += dt;
   if (s._hurtTimer > 0) s._hurtTimer -= dt;
   s.left.phase += dt*0.8; s.right.phase += dt*0.7;
@@ -154,9 +211,9 @@ function updateBoss(dt) {
 
     case BOSS_PHASE.SPLIT:
       wobblePart(s.left, 0); wobblePart(s.right, 1.2);
-      s.left.x  = cx - cfg.splitDist*0.5 + s.left.wobbleX;
+      s.left.x  = cx - splitDist*0.5 + s.left.wobbleX;
       s.left.y  = cy + s.left.wobbleY;
-      s.right.x = cx + cfg.splitDist*0.5 + s.right.wobbleX;
+      s.right.x = cx + splitDist*0.5 + s.right.wobbleX;
       s.right.y = cy + s.right.wobbleY;
 
       // 部件周围微尘粒子（灵动感）
@@ -173,8 +230,8 @@ function updateBoss(dt) {
     case BOSS_PHASE.CHARGING:
       // 血量越低蓄力越快：chargeTime除以hpSpeedRatio（1.0→1.8）
       const chargeSpd = hpSpeedRatio();
-      s.chargeProgress = Math.min(1, s.chargeProgress + dt/(cfg.chargeTime/chargeSpd));
-      const t = s.chargeProgress, d = cfg.splitDist*(1 - t*0.85);
+      s.chargeProgress = Math.min(1, s.chargeProgress + dt/(chargeTime/chargeSpd));
+      const t = s.chargeProgress, d = splitDist*(1 - t*0.85);
       s.left.x  = cx - d*0.5 + Math.sin(s.left.phase)*t*4;
       s.left.y  = cy + Math.cos(s.left.phase)*t*3;
       s.right.x = cx + d*0.5 + Math.sin(s.right.phase)*t*4;
@@ -237,11 +294,11 @@ function updateBoss(dt) {
     case BOSS_PHASE.VULNERABLE:
       // 两个部件都淡入到中心（活动方alpha=0保持消失）
       pullTo(s.left, cx, cy, 0.1); pullTo(s.right, cx, cy, 0.1);
-      if ((s.timer+=dt) > cfg.vulnerableTime) {
+      if ((s.timer+=dt) > vulnerableTime) {
         s.phase = BOSS_PHASE.SPLIT; s.timer = 0;
-        // 恢复两个部件
+        // 恢复两个部件；血量过半时标记二阶段（数值存于bossState，不污染共享config）
         s.left.targetAlpha = 1; s.right.targetAlpha = 1;
-        if (s.hp < s.maxHP*0.5) { cfg.splitDist=220; cfg.chargeTime=5.0; cfg.vulnerableTime=2.5; }
+        if (s.hp < s.maxHP*0.5) s._phase2 = true;
       }
       break;
 
@@ -329,8 +386,8 @@ function startAttack(s, cfg) {
 
   executeAttack(s.currentAttack, hpSpeedRatio());
 
-  // 遗的辶：瞬移冲刺（仅非残影版，残影版在executeAttack中处理）
-  if (s.currentAttack.type === 'left_charge' && cfg.name === '遗' && !s.currentAttack.afterimages) {
+  // 辶：瞬移冲刺（攻击配置 teleport:true 时生效，非残影版；残影版在executeAttack中处理）
+  if (s.currentAttack.type === 'left_charge' && s.currentAttack.teleport && !s.currentAttack.afterimages) {
     const l = s.left;
     const pos = getEdgePos(Math.floor(Math.random() * 4), edgeMargin());
     l.x = pos.x; l.y = pos.y;
@@ -599,8 +656,8 @@ function executeAttack(attack, spdMul, spiralOffset) {
   const s = bossState;
   if (attack.type==='left_charge') {
     const l = s.left;
-    // 遗的残影追：N个辶字独立弹丸，依次从不同边缘冲锋
-    if (bossConfig && bossConfig.name==='遗' && attack.afterimages > 1) {
+    // 残影追：N个部件字独立弹丸，依次从不同边缘冲锋（攻击配置 afterimages>1 时生效）
+    if (attack.afterimages > 1) {
       s._afterimages = [];
       const margin = edgeMargin();
       const interval = attack.afterimageInterval || 0.5;
@@ -966,15 +1023,6 @@ function enforceMinDist(a, b, min) {
   }
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
-  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
-  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
-  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
-  ctx.closePath();
-}
-
 function drawPart(ctx, part, cfg) {
   if (part.alpha < 0.02) return;
   ctx.save();
@@ -1097,20 +1145,22 @@ function damageBoss(dmg, multiplier) {
         p.size = 3+Math.random()*8; p.life = 25+Math.random()*35;
         particles.push(p);
       }
-      // 1.5秒后零警觉 → 2秒后憾冲入合体
-      setTimeout(() => {
-        if (typeof Dialogue !== 'undefined') {
-          Dialogue.show({
-            mode:'shake', speaker:'零',
-            text:'等等……不对。那个波形——它没有消失。它——',
-            speed:50
-          });
-        }
-      }, 1500);
-      setTimeout(() => {
-        if (typeof Dialogue !== 'undefined') Dialogue.hide();
-        triggerRegretFusion();
-      }, 2800);
+      // 1.5秒后零警觉 → 2秒后憾冲入合体（句柄存于bossState，玩家死亡/重试时清理）
+      bossState._fusionTimers = [
+        setTimeout(() => {
+          if (typeof Dialogue !== 'undefined') {
+            Dialogue.show({
+              mode:'shake', speaker:'零',
+              text:'等等……不对。那个波形——它没有消失。它——',
+              speed:50
+            });
+          }
+        }, 1500),
+        setTimeout(() => {
+          if (typeof Dialogue !== 'undefined') Dialogue.hide();
+          triggerRegretFusion();
+        }, 2800)
+      ];
       return true;
     }
   }
@@ -1204,6 +1254,7 @@ function shatterAllEquipment() {
     playerDefense = playerArmor.defense || 0;
   }
   if (typeof playerSkill !== 'undefined') playerSkill = EQUIPMENT.skills['concentration'];
+  if (typeof playerTalisman !== 'undefined') playerTalisman = null;
   if (typeof skillState !== 'undefined') skillState = { collected:[], chargeLevel:0, ready:false };
   if (typeof unlockedWeapons !== 'undefined') unlockedWeapons = new Set(['beginner_brush']);
   if (typeof nextAttackBoost !== 'undefined') nextAttackBoost = false;
@@ -1237,6 +1288,26 @@ function defeatBoss() {
   if(typeof enemyEntity!=='undefined')enemyEntity=null; shakeAmount=16;
   if (typeof lastBossKey !== 'undefined') lastBossKey = null; // Boss已击败，清除重试记录
   if (typeof Sound !== 'undefined' && Sound.setBGMIntensity) Sound.setBGMIntensity(0);
+  // 碎片奖励（按Boss区分）
+  if (typeof grantShards === 'function') {
+    const bossKey = bossState._bossKey || 'regret';
+    const reward = (typeof SHARD_REWARDS !== 'undefined') ? (SHARD_REWARDS['BOSS_' + bossKey.toUpperCase()] || SHARD_REWARDS.BOSS_HAN) : 50;
+    grantShards(reward, W*0.5, H*0.25);
+  }
+
+  // 图鉴：解锁Boss击败记忆
+  if (typeof registerMemory === 'function') {
+    const bossKey = bossState._bossKey || 'regret';
+    const memMap = {
+      'regret': 'memory_regret_defeated',
+      'yi': 'memory_yi_defeated',
+      'recall': 'memory_recall_defeated',
+      'obsess': 'memory_obsess_defeated',
+      'regretful': 'memory_regretful_defeated',
+    };
+    if (memMap[bossKey]) registerMemory(memMap[bossKey]);
+  }
+
   const cx=W*0.5,cy=H*0.2;
   for(let i=0;i<100;i++) particles.push(new HitParticle(cx,cy,'#ffcc88','·'));
   Sound.victory();
@@ -1255,6 +1326,8 @@ let fusionActive = false;
 let fusionState = null;
 
 function triggerRegretFusion() {
+  // 守卫：玩家死亡/重试后 bossState 已清空，不再触发融合演出
+  if (!bossState || !bossState._fusionPending) return;
   fusionActive = true;
   // 捕获遗部件当前漂浮位置（假撤退后上飘了约2.8秒）
   const yiX = bossState ? (bossState.left.x + bossState.right.x) * 0.5 : W*0.5;
@@ -1511,6 +1584,7 @@ function shatterAllEquipmentSilent() {
     playerDefense = playerArmor.defense || 0;
   }
   if (typeof playerSkill !== 'undefined') playerSkill = EQUIPMENT.skills['concentration'];
+  if (typeof playerTalisman !== 'undefined') playerTalisman = null;
   if (typeof skillState !== 'undefined') skillState = { collected:[], chargeLevel:0, ready:false };
   if (typeof unlockedWeapons !== 'undefined') unlockedWeapons = new Set(['beginner_brush']);
   if (typeof nextAttackBoost !== 'undefined') nextAttackBoost = false;

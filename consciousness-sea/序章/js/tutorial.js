@@ -100,7 +100,8 @@ const Tutorial = {
         playerHP = 62;
         updatePlayerUI();
         this.dialogueQueue = [
-          { mode:'float', speaker:'零', text:'绿色是修复词元。能恢复受损的意识场。注意你的意识完整度。', speed:35 },
+          { mode:'float', speaker:'零', text:'绿色的字是符字——由你装备的护符生成。触碰它就能恢复意识完整度。', speed:30 },
+          { mode:'float', speaker:'零', text:'你身上有一枚「回春符」。每次触碰符字回复4~7点意识。不同护符的回复量和频率都不一样。', speed:28 },
         ];
         this._playNextDialogue();
         break;
@@ -129,7 +130,8 @@ const Tutorial = {
         hint.textContent = ''; hint.style.opacity='0';
         this._introPlayed = false;
         this.dialogueQueue = [
-          { mode:'float', speaker:'零', text:'右下角的「囊」字……打开它。那是你的意识行囊。你的武器、防具、技能都在里面。', speed:32 },
+          { mode:'float', speaker:'零', text:'右下角的「囊」字……打开它。那是你的意识行囊。武器、防具、技能、护符都在里面。', speed:30 },
+          { mode:'float', speaker:'零', text:'记得看看那枚回春符——潜航中它就是你的生命线。', speed:32 },
         ];
         this._playNextDialogue();
         break;
@@ -385,10 +387,10 @@ const Tutorial = {
         if (!this._introPlayed) {
           this._introPlayed = true;
           const hint = document.getElementById('stage-hint');
-          hint.textContent = '触碰绿色的「愈」字恢复意识';
+          hint.textContent = '触碰绿色的「符」字恢复意识';
           hint.style.opacity = '0.7';
           this.progressTarget = 2;
-          this._spawnTutorialWords(['愈'], 4, 0.5);
+          this._spawnTutorialWords(['符'], 4, 0.5);
           for(let i=0;i<2;i++) this._addTutorialWord('攻');
           for(let i=0;i<2;i++) this._addTutorialWord('防');
         } else {
@@ -419,10 +421,10 @@ const Tutorial = {
           this.progressTarget = 6;
           this.timer = 0;
           battleWords = [];
-          for(let i=0;i<4;i++) this._addTutorialWord('攻');
+          for(let i=0;i<3;i++) this._addTutorialWord('攻');
           for(let i=0;i<2;i++) this._addTutorialWord('防');
-          for(let i=0;i<2;i++) this._addTutorialWord('愈');
-          for(let i=0;i<3;i++) this._addTutorialNoiseWord();
+          for(let i=0;i<2;i++) this._addTutorialWord('符');
+          for(let i=0;i<4;i++) this._addTutorialNoiseWord();
         } else if (this._noiseResolved) {
           this.enterPhase(PHASE.TUTORIAL_BACKPACK);
         } else {
@@ -642,18 +644,21 @@ const Tutorial = {
       }
     }
 
-    if(bw.cat==='愈'){
+    if(bw.cat==='符'){
       Sound.heal();
-      playerHP = Math.min(100, playerHP+3);
+      const t = typeof playerTalisman!=='undefined' ? playerTalisman : null;
+      const healAmt = t ? (t.healMin + Math.floor(Math.random()*(t.healMax - t.healMin + 1))) : 3;
+      playerHP = Math.min(playerMaxHP, playerHP + healAmt);
       updatePlayerUI();
-      for(let i=0;i<8;i++) particles.push(new HitParticle(bw.x,bw.y,'#44dd88','+'));
-      particles.push(new DamageText(bw.x,bw.y-10,'回复!','#44dd88'));
+      const talColor = t ? t.color : '#44dd88';
+      for(let i=0;i<8;i++) particles.push(new HitParticle(bw.x,bw.y,talColor,'+'));
+      particles.push(new DamageText(bw.x,bw.y-10,`+${healAmt}`,talColor));
       bw.alive=false; bw.targetAlpha=0;
 
       if(this.phase===PHASE.TUTORIAL_HEAL){
         this.progress++;
         if(this.progress>=this.progressTarget){
-          this._showCompleteDialogue('绿色「愈」字恢复意识完整度。受伤的时候，找绿字。', PHASE.TUTORIAL_SKILL);
+          this._showCompleteDialogue('符字是你的生命线。不同的护符提供不同的回复量和数量——打开行囊可以随时查看。', PHASE.TUTORIAL_SKILL);
         }
       }
     }

@@ -132,6 +132,11 @@ const Sound = (()=>{
     if (track.fadeTimer) { clearInterval(track.fadeTimer); track.fadeTimer = null; }
 
     const startAudio = (which) => {
+      // 统一管理监听：先移除上次挂载的 timeupdate，防止同一audio堆积多个监听
+      if (track._nearEndHandler) {
+        [track.a, track.b].forEach(au => { try { au.removeEventListener('timeupdate', track._nearEndHandler); } catch(e){} });
+        track._nearEndHandler = null;
+      }
       track.active = which;
       const audio = track[which];
       audio.volume = _bgmVolume;
@@ -149,6 +154,7 @@ const Sound = (()=>{
 
       // 监听即将结束 → 启动另一个副本交叉淡入
       const onNearEnd = () => {
+        if (track.stopped) return;          // 已停止/切轨：不再续播，防止旧轨"复活"
         if (track.active !== which) return; // 已被替换
         const remaining = audio.duration - audio.currentTime;
         if (remaining > _bgmCrossfade + 0.1) return;
@@ -179,6 +185,7 @@ const Sound = (()=>{
           }
         }, interval);
       };
+      track._nearEndHandler = onNearEnd;
       audio.addEventListener('timeupdate', onNearEnd);
     };
 
@@ -195,6 +202,11 @@ const Sound = (()=>{
     // 停止旧轨的循环
     if (_bgmCurrent && _bgmTracks[_bgmCurrent]) {
       const old = _bgmTracks[_bgmCurrent];
+      old.stopped = true; // 停止旧轨循环，防止其 onNearEnd 续播（双BGM重叠根因）
+      if (old._nearEndHandler) {
+        [old.a, old.b].forEach(au => { try { au.removeEventListener('timeupdate', old._nearEndHandler); } catch(e){} });
+        old._nearEndHandler = null;
+      }
       if (old.fadeTimer) { clearInterval(old.fadeTimer); old.fadeTimer = null; }
 
       const oldAudio = old.active ? old[old.active] : null;
@@ -249,6 +261,11 @@ const Sound = (()=>{
   function _bgmStop(fadeOutSec = 2.5) {
     if (_bgmCurrent && _bgmTracks[_bgmCurrent]) {
       const t = _bgmTracks[_bgmCurrent];
+      t.stopped = true; // 标记停止：挂起的 onNearEnd 不再续播
+      if (t._nearEndHandler) {
+        [t.a, t.b].forEach(au => { try { au.removeEventListener('timeupdate', t._nearEndHandler); } catch(e){} });
+        t._nearEndHandler = null;
+      }
       if (t.fadeTimer) { clearInterval(t.fadeTimer); t.fadeTimer = null; }
 
       [t.a, t.b].forEach(audio => {

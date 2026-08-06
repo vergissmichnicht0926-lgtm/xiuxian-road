@@ -61,12 +61,23 @@
 <!-- 存档提示 -->
 <div id="save-toast">已存档</div>
 
+<!-- 局内货币显示 -->
+<div id="shards-display">◇ 0</div>
+
 <!-- 囊字 -->
 <div id="pouch-btn">囊</div>
 
 <!-- 背包 -->
 <div id="backpack-overlay">
   <div id="backpack-hint">点击文字查看详情 · 点击空白关闭 · Tab / ESC</div>
+</div>
+
+<!-- 局外商店：灵魂工坊 -->
+<div id="permanent-shop-screen" class="hidden">
+  <div id="ps-title">灵魂工坊</div>
+  <div id="ps-balance">◆ 0</div>
+  <div id="ps-items"></div>
+  <div id="ps-back" class="back-link" onclick="closeSoulShop()">← 返回</div>
 </div>
 
 <!-- 结局 -->
@@ -97,7 +108,11 @@
 <script src="js/boss.js"></script>
 <script src="js/map.js"></script>
 <script src="js/rooms.js"></script>
+<script src="js/shop.js"></script>
+<script src="js/permanent-shop.js"></script>
 <script src="js/tutorial.js"></script>
+<script src="js/hub.js"></script>
+<script src="js/bestiary.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

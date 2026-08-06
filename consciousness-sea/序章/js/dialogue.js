@@ -79,10 +79,12 @@ const Dialogue = {
         html = `<div class="dialogue-shake active">${speakerHtml}<div class="d-text">${this._displayed||'&nbsp;'}</div></div>`;
         break;
       case 'whisper':
-        html = `<div class="dialogue-whisper active"><div class="d-text">${this._displayed||'&nbsp;'}</div></div>`;
+        // ⚠️ whisper模式支持speaker：有名字时显示（如"零"的低语），无名字时为旁白
+        html = `<div class="dialogue-whisper active">${speakerHtml}<div class="d-text">${this._displayed||'&nbsp;'}</div></div>`;
         break;
       case 'plain':
-        html = `<div class="dialogue-plain active"><div class="d-text">${this._displayed||'&nbsp;'}</div></div>`;
+        // plain模式也支持speaker（虽然通常用于主角/旁白，但保留灵活性）
+        html = `<div class="dialogue-plain active">${speakerHtml}<div class="d-text">${this._displayed||'&nbsp;'}</div></div>`;
         break;
       case 'tremble':
         html = `<div class="dialogue-tremble active">${speakerHtml}<div class="d-text">${this._displayed||'&nbsp;'}</div></div>`;

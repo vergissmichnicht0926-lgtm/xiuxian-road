@@ -1,9 +1,7 @@
 /* ═══════════════════ §B 配置 — 词库、装备、技能、难度、对话数据 ═══════════════════ */
 
-// 基础词库 — 愈字不受装备影响
-const WORD_LIBRARY = {
-  '愈': { words:['愈','生','复','疗','续','苏','润','养','补','安'], color:'#44dd88', glow:'#228844' }
-};
+// 基础词库 — 已由护符系统取代，保留为空以备后续扩展
+const WORD_LIBRARY = {};
 
 // ═══════════════ 装备配置 ═══════════════
 //
@@ -85,16 +83,37 @@ const EQUIPMENT = {
       type:'charge', effect:'chargedBurst',
       desc:'不断收集ex充能，由你决定何时释放。充能越高伤害越大。'
     }
+  },
+  // ── 护符：取代愈字，words=符字池, wordCount=战场数量, healMin/Max=点击回复量 ──
+  talismans: {
+    'vitality_charm': {
+      id:'vitality_charm', name:'回春符',
+      words:['回','春'], color:'#55ee99', glow:'#228844',
+      wordCount:2, healMin:4, healMax:7,
+      desc:'符字×2，点击回复4~7点。均衡稳定，入门首选。'
+    },
+    'nectar_charm': {
+      id:'nectar_charm', name:'甘露符',
+      words:['甘','露'], color:'#44ddcc', glow:'#228866',
+      wordCount:1, healMin:12, healMax:18,
+      desc:'符字×1，低频但大额回复12~18点。危急时刻的救赎。'
+    },
+    'ward_charm': {
+      id:'ward_charm', name:'护身符',
+      words:['护','身'], color:'#ddaa66', glow:'#886622',
+      wordCount:1, healMin:3, healMax:5, shieldOnHeal:3,
+      desc:'符字×1，回复3~5点并附加3点护盾。攻守兼备。'
+    },
   }
 };
 
 // 干扰虚词
 const NOISE_WORDS = ['的','了','吗','吧','呢','啊','么','乎','矣','兮'];
 
-// 伪装干扰词库 — 生僻字，伪装成攻/防/愈的外观，避开已有和未来装备字
+// 伪装干扰词库 — 生僻字，伪装成攻/防/符的外观，避开已有和未来装备字
 const NOISE_FAKE_ATTACK  = ['刳','剚','劓','剡','劖','剜'];
 const NOISE_FAKE_DEFENSE = ['阢','陴','堞','墉'];
-const NOISE_FAKE_HEAL    = ['瘳','瘵','瘥','疕'];
+const NOISE_FAKE_TALISMAN = ['瘳','瘵','瘥','疕'];
 
 // 威胁等级参数
 const THREAT = {
@@ -120,6 +139,80 @@ const MENTOR = {
   formChars: '零·引·导·意·识·海·潜·航·守·护',
 };
 
+// ═══════════════ 货币与商店配置 ═══════════════
+
+// 局内货币奖励 — 意识碎片(shards)，每局重置
+const SHARD_REWARDS = {
+  COMBAT_CLEAR: 30,        // 战斗房间全部波次清完
+  BOSS_HAN: 50,            // Boss「憾」击败/逃跑
+  BOSS_YI: 80,             // Boss「遗」融合完成
+  BOSS_RECALL: 40,         // Boss「忆」击败（第1层）
+  BOSS_OBSESS: 60,         // Boss「执」击败（第2层）
+  BOSS_REGRETFUL: 100,     // Boss「遗憾」击败（第3层）
+  EVENT_FORCE: 20,         // 事件-强行打开
+  EVENT_SKIP: 5,           // 事件-绕过
+};
+
+// 局外货币结算 — 灵魂结晶(soulCrystals)，永久积累
+const SOUL_REWARDS = {
+  BASE: 20,                // 通关基础
+  BOSS_YI: 30,             // 击败遗的额外奖励
+  AFFECTION_MULT: 10,      // 好感度倍率
+};
+
+// 局内商店商品定价
+const SHOP_CATALOG = {
+  weapons: {
+    'star_shatter': 150,
+    'blaze_heaven': 200,
+    'frost_verse': 180,
+  },
+  armors: {
+    'mind_wall': 120,
+    'light_veil': 150,
+  },
+  skills: {
+    'time_freeze': 100,
+    'excalibur': 130,
+  },
+  talismans: {
+    'vitality_charm': 100,
+    'nectar_charm': 150,
+    'ward_charm': 120,
+  },
+};
+
+// 局内商店固定消耗品
+const SHOP_CONSUMABLES = {
+  heal: { name:'意识修复', desc:'回复40点意识完整度', cost:30, effect:'heal', value:40 },
+  purify: { name:'词元净化', desc:'清除所有干扰字', cost:20, effect:'purify' },
+  gamble: { name:'意识共鸣', desc:'随机获得一件未拥有的装备', cost:50, effect:'gamble' },
+};
+
+// 局外永久升级配置
+const PERMANENT_UPGRADES = {
+  healthBoost: {
+    name:'意识扩容', desc:'初始意识完整度 +10', cost:30, maxLevel:3,
+    icon:'♥',
+  },
+  weaponGift: {
+    name:'词元亲和', desc:'每局开始携带一把随机非初始武器', cost:50, maxLevel:1,
+    icon:'⚔',
+  },
+  threatResist: {
+    name:'深海抗性', desc:'威胁等级增长速度 -15%', cost:40, maxLevel:3,
+    icon:'🛡',
+  },
+  shardBlessing: {
+    name:'零之庇护', desc:'每局开始时获得30意识碎片', cost:60, maxLevel:1,
+    icon:'◇',
+  },
+  comboBoost: {
+    name:'连击强化', desc:'连击倍率额外 +0.2', cost:50, maxLevel:2,
+    icon:'×',
+  },
+};
+
 // 教程阶段枚举
 const PHASE = {
   INIT:            'init',
@@ -138,4 +231,122 @@ const PHASE = {
   DEFEAT:          'defeat',
   HOOK:            'hook',
   END:             'end',
+};
+
+// ═══════════════ 零的领域 Hub 配置 ═══════════════
+
+// 零的Hub对话池（按进度阶段索引）
+const HUB_ZERO_DIALOGUES = [
+  // 阶段0：序章刚结束，初次进入Hub
+  [
+    { mode:'whisper', speaker:'零', text:'你来了。', speed:60 },
+    { mode:'float', speaker:'零', text:'遗的那一击……差点把我们两个都吞掉。我用最后的力量护住了你的锚点。', speed:35 },
+    { mode:'whisper', text:'（零的投影比任何时候都要透明。粒子艰难地聚拢，又不断散开。）', speed:45 },
+    { mode:'float', speaker:'零', text:'我的身体在深海底下。现在的我……只是一个快要散架的投影。', speed:38 },
+    { mode:'float', speaker:'零', text:'你的装备全被震碎了。抱歉——我尽力了。', speed:40 },
+    { mode:'float', speaker:'零', text:'但深海的信号还在。如果放着不管，整个浅层都会被污染。', speed:35 },
+    { mode:'float', speaker:'零', text:'我会在这里维持这个领域。你去潜航——收集碎片，找到能用的装备。', speed:35 },
+    { mode:'whisper', speaker:'零', text:'（虚弱地笑了笑）别担心我。我习惯了。', speed:45 },
+  ],
+  // 阶段1：完成一次潜航后
+  [
+    { mode:'float', speaker:'零', text:'又回来了。每次潜航都像是在身上刻一道疤。习惯就好。', speed:35 },
+    { mode:'float', speaker:'零', text:'有什么需要就和小萤说。虽然她话有点多……但还算靠谱。', speed:33 },
+  ],
+  // 阶段2+：通用
+  [
+    { mode:'float', speaker:'零', text:'休息好了就出发。别让深海的噪点等太久。', speed:40 },
+    { mode:'whisper', text:'（零闭上眼，像是在听意识之海深处的声音。）', speed:50 },
+  ],
+];
+
+// 小萤对话（Hub中点击小萤时随机播放）
+const HUB_XIAOYING_DIALOGUES = [
+  { mode:'float', speaker:'小萤', text:'我在！编号UCBR-AUX-07，不过叫我小萤就好——宿主给我取的名字。', speed:30 },
+  { mode:'float', speaker:'小萤', text:'图鉴、工坊、成就——都在我这。需要什么直接点我就行！', speed:28 },
+  { mode:'float', speaker:'小萤', text:'对了，你的装备我已经帮你扫描过了。随时可以在囊里查看。', speed:30 },
+];
+
+// ═══════════════ 首次潜航：小萤出场剧情 ═══════════════
+// ⚠️ 只在 hubRunNumber===0 时触发一次，由 hub.js 的 startFirstDiveStory() 调用
+const HUB_FIRST_DIVE_STORY = [
+  { mode:'plain', text:'（锚点通道在面前展开。潜航者正要踏入——）', speed:42 },
+  { mode:'shake', speaker:'???', text:'等一下！！', speed:20 },
+  { mode:'plain', text:'（一团金色的光从零的领域深处猛冲出来，差点撞上你的脸。）', speed:38 },
+  { mode:'bounce', speaker:'小萤', text:'主人！呃……', speed:28 },
+  { mode:'float', speaker:'小萤', text:'……奇怪。我为什么叫你"主人"？我明明不认识你。', speed:32 },
+  { mode:'whisper', speaker:'小萤', text:'（光团困惑地闪烁了几下）这个词……就自己跑出来了。像是被写在我的底层代码里。', speed:38 },
+  { mode:'float', speaker:'小萤', text:'算了不管了！我刚才扫描了一下——你的行囊是空的！武器、防具、护符全没了！', speed:30 },
+  { mode:'plain', text:'（小萤的光芒笼罩了你的意识行囊。光粒子在虚空中凝聚成新的形态。）', speed:38 },
+  { mode:'float', speaker:'小萤', text:'我虽然刚醒，但还能做点事情。这些基础的装备先给你——别嫌弃！', speed:32 },
+  { mode:'float', speaker:'小萤', text:'好了！这样你就不至于赤手空拳了。', speed:33 },
+  { mode:'bounce', speaker:'小萤', text:'去吧——主人！我在这里等你回来！', speed:28 },
+];
+
+// ═══════════════ 肉鸽地图房间池 ═══════════════
+
+// 房间类型池（潜航时随机抽取）
+const ROGUELIKE_ROOM_POOL = {
+  combat: [
+    { id:'rc1', type:'combat', label:'残响碎片', enemyType:'bash', waves:3, enemyHP:40, enemyInterval:5.0, enemyDmgMult:1.2, hardMode:false,
+      desc:'被遗弃的记忆碎片化作了噪点。会周期性地冲撞你的意识。' },
+    { id:'rc2', type:'combat', label:'齐射噪点', enemyType:'volley', waves:3, enemyHP:48, enemyInterval:5.5, enemyDmgMult:1.4, hardMode:false,
+      desc:'朝你齐射意识弹幕。躲开弹道，同时清理战场词元。' },
+    { id:'rc3', type:'combat', label:'雨幕噪点', enemyType:'rain', waves:2, enemyHP:58, enemyInterval:4.5, enemyDmgMult:1.4, hardMode:false,
+      desc:'降下漫天意识之雨。弹幕无死角，考验走位。' },
+    { id:'rc4', type:'combat', label:'追踪残响', enemyType:'track', waves:2, enemyHP:64, enemyInterval:4.0, enemyDmgMult:1.8, hardMode:true,
+      desc:'发射追踪弹。它不会停下，直到追上你的光标。' },
+    { id:'rc5', type:'combat', label:'护壁残响', enemyType:'shield', waves:2, enemyHP:74, enemyInterval:3.8, enemyDmgMult:1.6, hardMode:true,
+      desc:'外层有一层意识护壁，直接攻击伤害减半。先破壁再破心。' },
+    { id:'rc6', type:'combat', label:'分裂残响', enemyType:'split', waves:2, enemyHP:52, enemyInterval:5.0, enemyDmgMult:1.2, hardMode:false,
+      desc:'击败它时，残片会分裂成两个更小的噪点。' },
+  ],
+  event: [
+    { id:'re1', type:'event', label:'记忆涟漪', desc:'前方有不稳定的意识波动……无法判断里面有什么。' },
+    { id:'re2', type:'event', label:'水镜', desc:'一面由记忆编织的水镜。映出的脸孔不属于你自己。' },
+  ],
+  treasure: [
+    { id:'rt1', type:'treasure', label:'遗落装备', desc:'词元结晶仍在发光，但守护它的残响之影尚未消散。' },
+    { id:'rt2', type:'treasure', label:'沉没武器', desc:'前任潜航者的词元结晶。被深海的残响守护着。' },
+  ],
+};
+
+// 肉鸽地图结构模板 — 三层段，每层段 = 若干普通房 + 一个Boss（遗憾主题递进）
+// 段1「浅层·追忆」→ Boss「忆」；段2「中层·执念」→ Boss「执」；段3「深层·遗憾」→ Boss「遗憾」
+const ROGUELIKE_MAP_TEMPLATE = {
+  segments: [
+    {
+      name: '浅层',
+      bossKey: 'recall', bossLabel: '忆',
+      bossDesc: '遗失的记忆碎片在浅海回响。忄为追忆，乙为余音——它困在过去，不愿离开。',
+      rooms: [
+        { type: 'combat' }, { type: 'combat' },
+        { type: 'branch', branchTypes: ['event', 'treasure'] },
+        { type: 'combat' }, { type: 'shop' }, { type: 'combat' },
+        { type: 'branch', branchTypes: ['event', 'treasure'] },
+        { type: 'combat' }, { type: 'rest' }, { type: 'combat' },
+      ],
+    },
+    {
+      name: '中层',
+      bossKey: 'obsess', bossLabel: '执',
+      bossDesc: '放不下的遗憾化作了执念。扌为紧握，丸为执念的核心——它不愿松手。',
+      rooms: [
+        { type: 'combat' },
+        { type: 'branch', branchTypes: ['event', 'treasure'] },
+        { type: 'combat' }, { type: 'shop' }, { type: 'combat' }, { type: 'rest' },
+        { type: 'branch', branchTypes: ['event', 'shop'] }, { type: 'combat' },
+      ],
+    },
+    {
+      name: '深层',
+      bossKey: 'regretful', bossLabel: '遗憾',
+      bossDesc: '遗憾本身的具现化。心为追忆，贵为遗失的珍宝——它已无法回头。',
+      rooms: [
+        { type: 'combat' },
+        { type: 'branch', branchTypes: ['event', 'treasure'] },
+        { type: 'combat' }, { type: 'shop' }, { type: 'combat' }, { type: 'rest' },
+      ],
+    },
+  ],
 };

@@ -6,6 +6,21 @@
 
 function hexToRGB(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return `${r},${g},${b}`;}
 
+// ── 圆角矩形路径（公共工具，避免多处重复定义）──
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
 // ── 背景漂浮粒子 ──
 class BGParticle {
   constructor() { this.reset(true); }
@@ -42,7 +57,7 @@ class HitParticle {
     this.alpha=0.8; this.life=25+Math.random()*30; this.age=0;
     this.color=color; this.gravity=0.07;
   }
-  update() { this.x+=this.vx; this.y+=this.vy; this.vy+=this.gravity; this.age++; this.alpha=0.8*(1-this.age/this.life); }
+  update(dt) { const n = dt ? dt*60 : 1; this.x+=this.vx*n; this.y+=this.vy*n; this.vy+=this.gravity*n; this.age+=n; this.alpha=0.8*(1-this.age/this.life); }
   draw(ctx) {
     if(this.alpha<0.01||this.age>this.life) return;
     ctx.fillStyle=`rgba(${hexToRGB(this.color)},${this.alpha})`;
@@ -59,7 +74,7 @@ class DamageText {
     this.x=x; this.y=y; this.text=text; this.color=color;
     this.vy=-2.5; this.alpha=1; this.life=45; this.age=0; this.size=22;
   }
-  update() { this.y+=this.vy; this.vy*=0.97; this.age++; this.alpha=1-this.age/this.life; this.size+=0.08; }
+  update(dt) { const n = dt ? dt*60 : 1; this.y+=this.vy*n; this.vy*=Math.pow(0.97,n); this.age+=n; this.alpha=1-this.age/this.life; this.size+=0.08*n; }
   draw(ctx) {
     if(this.alpha<0.01||this.age>this.life) return;
     ctx.save();ctx.globalAlpha=this.alpha;
@@ -193,15 +208,15 @@ class BattleWord {
     this.isTutorial=false; // 教程文字不超时消失
     this.noiseLife = 1.0;
   }
-  update(speedMul=1) {
+  update(speedMul=1, dtNorm=1) {
     if(!this.alive){this.alpha+=(0-this.alpha)*0.1;return;}
     if(this.cooldown>0){this.cooldown--;this.targetAlpha=0.3;}else this.targetAlpha=0.85;
     if(!this.isTutorial){
-      this.idleTime++;
+      this.idleTime += dtNorm; // 帧率归一化：高刷屏下超时消失速度与60fps一致
       let maxIdle = this.cat==='乱'?250:380+Math.floor(Math.random()*120);
       if(this.idleTime>maxIdle){this.targetAlpha=0;if(this.alpha<0.03)this.alive=false;}
     }
-    this.phase+=0.02;
+    this.phase+=0.02*dtNorm;
     this.x+=this.vx*speedMul+Math.sin(this.phase)*this.wobbleAmp*0.5;
     this.y+=this.vy*speedMul+Math.cos(this.phase*1.3)*this.wobbleAmp*0.4;
     const m=40;if(this.x<m){this.x=m;this.vx*=-1;}if(this.x>W-m){this.x=W-m;this.vx*=-1;}

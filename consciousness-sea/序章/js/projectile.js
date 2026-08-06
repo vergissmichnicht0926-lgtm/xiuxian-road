@@ -22,7 +22,6 @@ class Projectile {
     this.alpha = 0.9;
     this.phase = Math.random() * Math.PI * 2;
     this.age = 0;
-    this._trail = []; // 轨迹尾迹
     this._waveAmp = 0;   // 正弦摆动幅度
     this._waveFreq = 0;  // 摆动频率
     this._wavePhase = 0; // 初始相位
@@ -154,14 +153,3 @@ const BulletPattern = {
     return projs;
   }
 };
-
-/** 偏旁炮弹 — 高速飞向目标，带预警线 */
-function spawnRadicalCannon(fromX, fromY, toX, toY, char, speed, damage, color) {
-  const angle = Math.atan2(toY - fromY, toX - fromX);
-  const spd = speed || 12;
-  return new Projectile(
-    char, fromX, fromY,
-    Math.cos(angle) * spd, Math.sin(angle) * spd,
-    color || '#ff6644', damage || 20, 38
-  );
-}

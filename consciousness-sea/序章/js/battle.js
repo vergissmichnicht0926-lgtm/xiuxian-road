@@ -11,6 +11,8 @@
 
 let enemyHP=40, enemyMaxHP=40, enemyTimer=0, enemyInterval=6;
 let enemyEntity = null; // 战场中的敌人视觉实体 { x, y, char, color, size, phase, hurtFlash }
+let currentEnemyType = 'bash';   // 当前敌人攻击类型（房间设置：bash/volley/rain/track/shield/split）
+let enemyProjectiles = [];       // 普通敌人弹幕（弹幕型敌人发射）
 let playerHP=100, playerMaxHP=100;
 let hasShield=false, shieldHP=0;
 let playerDefense=0; // 当前防具减伤值
@@ -35,7 +37,10 @@ function getCatConfig(cat) {
   if (cat==='防' && typeof playerArmor!=='undefined' && playerArmor) {
     return { words:playerArmor.words, color:playerArmor.color, glow:playerArmor.glow };
   }
-  if (cat==='愈') return WORD_LIBRARY['愈'];
+  // 符字 — 由护符配置提供（战场治疗来源）
+  if (cat==='符' && typeof playerTalisman!=='undefined' && playerTalisman) {
+    return { words:playerTalisman.words, color:playerTalisman.color, glow:playerTalisman.glow };
+  }
   // 技能字 — 由技能配置提供
   if (cat==='skill' && typeof playerSkill!=='undefined' && playerSkill) {
     return { words:playerSkill.chars, color:playerSkill.color, glow:playerSkill.glow };
@@ -52,20 +57,30 @@ function comboPenalty(levels) {
   else { comboWords = comboWords.slice(-Math.min(combo, 5)); updateComboColors(); }
 }
 
-/** 刷新敌人实体（根据难度/房间类型） */
-function spawnEnemyEntity(hardMode) {
-  const chars = hardMode
-    ? ['恨','悔','惜','怅']
-    : ['敌','噪','乱','扰','侵'];
+/** 刷新敌人实体（根据难度/房间类型/攻击类型） */
+function spawnEnemyEntity(hardMode, enemyType) {
+  currentEnemyType = enemyType || 'bash';
+  // 不同攻击类型的敌人视觉特征（名字对应攻击方式）
+  const VIS = {
+    bash:   { chars:['敌','噪','乱','扰','侵'], color:'#cc8866', glow:'#884422', size:44 },
+    volley: { chars:['矢','射','齐','迸'],       color:'#66aaff', glow:'#3366cc', size:48 },
+    rain:   { chars:['雨','滴','滂','霖'],       color:'#55ccdd', glow:'#2288aa', size:48 },
+    track:  { chars:['追','逐','缠','觅'],       color:'#aa77ff', glow:'#6633cc', size:50 },
+    shield: { chars:['壁','护','盾','御'],       color:'#ddcc88', glow:'#aa9933', size:52 },
+    split:  { chars:['裂','散','分','崩'],       color:'#ff9966', glow:'#cc5522', size:46 },
+  };
+  const v = VIS[enemyType] || VIS.bash;
+  const hardChars = ['恨','悔','惜','怅'];
   enemyEntity = {
     x: W*0.5, y: H*0.26,
-    char: chars[Math.floor(Math.random()*chars.length)],
-    color: hardMode ? '#dd9988' : '#cc8866',
-    glow: hardMode ? '#994433' : '#884422',
-    size: hardMode ? 56 : 44,
+    char: hardMode ? hardChars[Math.floor(Math.random()*hardChars.length)] : v.chars[Math.floor(Math.random()*v.chars.length)],
+    color: hardMode ? '#dd9988' : v.color,
+    glow: hardMode ? '#994433' : v.glow,
+    size: hardMode ? 56 : v.size,
     phase: Math.random()*Math.PI*2,
     hurtFlash: 0,
     wobbleX: 0, wobbleY: 0,
+    enemyType: currentEnemyType,
   };
 }
 
@@ -113,6 +128,8 @@ function drawEnemyEntity(ctx) {
 
 /** 对敌人造成伤害 */
 function dealDamage(dmg,isCombo) {
+  // 护壁残响：直接攻击伤害减半
+  if (currentEnemyType === 'shield') dmg = Math.max(1, Math.floor(dmg * 0.5));
   enemyHP-=dmg;
   if(enemyHP<0) enemyHP=0;
   updateEnemyUI();
@@ -194,7 +211,7 @@ function applyDamageToPlayer(rawDmg) {
   return { dmg, absorbed, shieldBroken: hasShield === false && absorbed > 0 };
 }
 
-/** 敌人攻击 */
+/** 敌人攻击 — 按攻击类型分发：弹幕型发射弹幕，近战型直接扣血 */
 function enemyAttack() {
   if(Tutorial.phase!==PHASE.BATTLE) return;
 
@@ -208,8 +225,36 @@ function enemyAttack() {
     return;
   }
 
+  if (currentEnemyType==='volley' || currentEnemyType==='rain' || currentEnemyType==='track') {
+    enemyLaunchProjectiles();
+  } else {
+    enemyAttackMelee();
+  }
+
+  comboPenalty();
+
+  // 玩家死亡判定
+  if(playerHP<=0){
+    if(typeof Tutorial!=='undefined' && Tutorial.phase && Tutorial.phase.toString().startsWith('tutorial_')){
+      playerHP=30;
+      updatePlayerUI();
+      Dialogue.show({mode:'shake',speaker:'零',text:'……你需要再来一次。集中精神！',speed:30});
+      enemyTimer=enemyInterval;
+      refreshWords();
+      return;
+    }
+    handlePlayerDeath();
+    return;
+  }
+  enemyTimer=enemyInterval;
+  refreshWords();
+}
+
+/** 近战攻击：直接对玩家造成伤害（bash/shield/split 类型） */
+function enemyAttackMelee() {
   const diff=DIFFICULTY[difficulty];
-  let rawDmg=diff.enemyDmg[0]+Math.floor(Math.random()*(diff.enemyDmg[1]-diff.enemyDmg[0]));
+  const dmgMult=(typeof currentDiveRoom!=='undefined'&&currentDiveRoom&&currentDiveRoom.enemyDmgMult)?currentDiveRoom.enemyDmgMult:1;
+  let rawDmg=Math.round((diff.enemyDmg[0]+Math.floor(Math.random()*(diff.enemyDmg[1]-diff.enemyDmg[0])))*dmgMult);
   // 残响之影：波纹攻击伤害翻倍
   if (typeof currentDiveRoom !== 'undefined' && currentDiveRoom && currentDiveRoom.type === 'treasure') {
     rawDmg = 16 + Math.floor(Math.random() * 12); // 16-27，很高
@@ -240,23 +285,56 @@ function enemyAttack() {
     particles.push(new DamageText(W*0.5,H*0.65,`-${result.dmg}${defInfo}`,'#ff4444'));
     for(let i=0;i<10;i++) particles.push(new HitParticle(W*0.5,H*0.7,'#ff3333','×'));
   }
-  comboPenalty();
+}
 
-  // 玩家死亡判定
-  if(playerHP<=0){
-    if(typeof Tutorial!=='undefined' && Tutorial.phase && Tutorial.phase.toString().startsWith('tutorial_')){
-      playerHP=30;
-      updatePlayerUI();
-      Dialogue.show({mode:'shake',speaker:'零',text:'……你需要再来一次。集中精神！',speed:30});
-      enemyTimer=enemyInterval;
-      refreshWords();
-      return;
-    }
-    handlePlayerDeath();
-    return;
+/** 弹幕型敌人：发射弹幕（玩家被击中时扣血） */
+function enemyLaunchProjectiles() {
+  const e = enemyEntity;
+  const cx = e ? e.x : W*0.5;
+  const cy = e ? e.y : H*0.26;
+  const diff = DIFFICULTY[difficulty];
+  const dmgMult=(typeof currentDiveRoom!=='undefined'&&currentDiveRoom&&currentDiveRoom.enemyDmgMult)?currentDiveRoom.enemyDmgMult:1;
+  const dmg = Math.round((diff.enemyDmg[0] + Math.floor(Math.random()*(diff.enemyDmg[1]-diff.enemyDmg[0]))) * dmgMult);
+  let projs = [];
+  if (currentEnemyType === 'volley') {
+    projs = BulletPattern.radial(cx, cy, '·', 8, 2.0, '#66aaff', dmg, 14);
+  } else if (currentEnemyType === 'rain') {
+    projs = BulletPattern.rain(cx, cy, '·', 6, 1.6, '#55ccdd', dmg, 16);
+  } else if (currentEnemyType === 'track') {
+    // aimed 签名是位置参数 (cx,cy,toX,toY,char,count,speed,color,damage,size,spreadAngle)
+    projs = BulletPattern.aimed(cx, cy, mx, my, '·', 1, 3.2, '#aa77ff', dmg, 14, 0);
   }
-  enemyTimer=enemyInterval;
-  refreshWords();
+  enemyProjectiles.push(...projs);
+  Sound.enemyAtk();
+}
+
+/** 普通敌人弹幕更新（位移 + 鼠标碰撞扣血） */
+function updateEnemyProjectiles(dt) {
+  if (enemyProjectiles.length === 0) return;
+  enemyProjectiles.forEach(p => {
+    p.update(dt);
+    if (p.alive && p.hitMouse(mx, my, 18)) {
+      p.alive = false;
+      const result = applyDamageToPlayer(p.damage);
+      particles.push(new DamageText(p.x, p.y - 10, `-${result.dmg}`, '#ff4444'));
+      for (let i = 0; i < 6; i++) particles.push(new HitParticle(p.x, p.y, '#ff3333', '·'));
+      comboPenalty();
+      if (playerHP <= 0 && typeof handlePlayerDeath === 'function') {
+        if (typeof Tutorial !== 'undefined' && Tutorial.phase && Tutorial.phase.toString().startsWith('tutorial_')) {
+          playerHP = 30; updatePlayerUI();
+          Dialogue.show({ mode:'shake', speaker:'零', text:'……你需要再来一次。集中精神！', speed:30 });
+        } else {
+          handlePlayerDeath();
+        }
+      }
+    }
+  });
+  enemyProjectiles = enemyProjectiles.filter(p => p.alive);
+}
+
+/** 绘制普通敌人弹幕 */
+function drawEnemyProjectiles(ctx) {
+  enemyProjectiles.forEach(p => p.draw(ctx));
 }
 
 /** 更新敌人HP条 */
@@ -272,6 +350,7 @@ function updatePlayerUI() {
   let info = `潜航者 · 意识完整度 ${Math.round(playerHP)}%`;
   if (playerDefense > 0) info += ` · 防${playerDefense}`;
   if (hasShield && shieldHP > 0) info += ` · 盾${Math.ceil(shieldHP)}`;
+  if (typeof playerTalisman !== 'undefined' && playerTalisman) info += ` · ${playerTalisman.name}`;
   document.getElementById('player-info').textContent = info;
 }
 
@@ -303,12 +382,13 @@ function balanceWords() {
   }
 
   const diff=DIFFICULTY[difficulty];
-  battleWords=battleWords.filter(bw=>bw.alive);
+  battleWords=battleWords.filter(bw=>bw.alive||bw.alpha>0.03); // 保留淡出中的字，避免突消失
 
   const atkCount = (typeof playerWeapon!=='undefined' && playerWeapon && playerWeapon.wordCount) ? playerWeapon.wordCount : 5;
   const defCount = (typeof playerArmor!=='undefined' && playerArmor && playerArmor.wordCount) ? playerArmor.wordCount : 2;
-  const targets={攻:atkCount,防:defCount,愈:2};
-  const current={攻:0,防:0,愈:0};
+  const talismanCount = (typeof playerTalisman!=='undefined' && playerTalisman && playerTalisman.wordCount) ? playerTalisman.wordCount : 0;
+  const targets={攻:atkCount,防:defCount,符:talismanCount};
+  const current={攻:0,防:0,符:0};
   battleWords.forEach(bw=>{if(current[bw.cat]!==undefined) current[bw.cat]++;});
 
   // 渐进恢复：每个周期只补1个词，缓慢充盈
@@ -317,7 +397,7 @@ function balanceWords() {
   const maxPerCall = gradual ? 2 : 99;
 
   // 补字 — 使用装备词元池
-  for(const cat of ['攻','防','愈']){
+  for(const cat of ['攻','防','符']){
     const cfg=getCatConfig(cat);
     if(!cfg) continue;
     while(current[cat]<targets[cat] && addedThisCall < maxPerCall){
@@ -370,7 +450,7 @@ function balanceWords() {
     let text, catColor, catGlow, isFake=false;
 
     if (Math.random() < fakeRate) {
-      // 伪装字：随机选攻/防/愈伪装
+      // 伪装字：随机选攻/防/符伪装
       const catRoll = Math.random();
       if (catRoll < 0.5) {
         text = NOISE_FAKE_ATTACK[Math.floor(Math.random()*NOISE_FAKE_ATTACK.length)];
@@ -379,7 +459,7 @@ function balanceWords() {
         text = NOISE_FAKE_DEFENSE[Math.floor(Math.random()*NOISE_FAKE_DEFENSE.length)];
         const cfg = getCatConfig('防'); catColor = cfg ? cfg.color : '#66aaff'; catGlow = cfg ? cfg.glow : '#3366cc';
       } else {
-        text = NOISE_FAKE_HEAL[Math.floor(Math.random()*NOISE_FAKE_HEAL.length)];
+        text = NOISE_FAKE_TALISMAN[Math.floor(Math.random()*NOISE_FAKE_TALISMAN.length)];
         catColor = '#44dd88'; catGlow = '#228844';
       }
       isFake = true;
@@ -519,6 +599,8 @@ function handlePlayerDeath() {
 
   // Boss战清理 — 立即清除bossActive防止残留渲染
   if (bossActive && bossState) {
+    // 清理遗假撤退的挂起定时器，防止死亡后融合演出残留
+    if (bossState._fusionTimers) { bossState._fusionTimers.forEach(clearTimeout); bossState._fusionTimers = null; }
     bossProjectiles.forEach(p => { for (let i = 0; i < 4; i++) particles.push(new HitParticle(p.x, p.y, '#ff3333', '·')); });
     bossProjectiles = [];
     bossState._gravityActive = false;
@@ -557,6 +639,8 @@ function triggerYiSacrifice() {
 
   // 清除Boss战场 — 立即清除状态防止残留，粒子留存做视觉演出
   if (bossActive && bossState) {
+    // 清理遗假撤退的挂起定时器
+    if (bossState._fusionTimers) { bossState._fusionTimers.forEach(clearTimeout); bossState._fusionTimers = null; }
     bossProjectiles.forEach(p => { for (let i = 0; i < 3; i++) particles.push(new HitParticle(p.x, p.y, '#aaeeff', '·')); });
     bossProjectiles = [];
     bossState._gravityActive = false;
@@ -610,7 +694,9 @@ function triggerYiSacrifice() {
     Dialogue.hide();
     document.getElementById('stun-overlay').classList.remove('active');
     if (typeof returnToMap === 'function') {
-      returnToMap('boss_yi');
+      // 用真实房间id（肉鸽动态id如boss_0），硬编码'boss_yi'会导致boss房完成不了、肉鸽卡住
+      const id = (typeof currentDiveRoom !== 'undefined' && currentDiveRoom && currentDiveRoom.id) || 'boss_yi';
+      returnToMap(id);
     }
   }, 3000);
 }
@@ -669,7 +755,6 @@ function handleBattleClick(bw) {
     }
     const bonus=combo>=10?2.5:combo>=7?2.0:combo>=5?1.5:combo>=3?1.2:1;
     const boostMult=nextAttackBoost?2:1;
-    if(nextAttackBoost){nextAttackBoost=false;skillState.ready=false;particles.push(new DamageText(bw.x,bw.y-14,'倍击!','#ffaa44'));}
     const baseDmg=playerWeapon?playerWeapon.damage:10;
     const dmg=Math.floor((baseDmg+Math.random()*3)*bonus*boostMult);
 
@@ -677,6 +762,8 @@ function handleBattleClick(bw) {
     if(bossActive && typeof hitBossPart==='function'){
       const hit = hitBossPart(mx, my);
       if(hit || (bossState && bossState.phase===BOSS_PHASE.VULNERABLE)){
+        // 命中才消耗凝神倍击（无效点击不吞）
+        if(nextAttackBoost){nextAttackBoost=false;skillState.ready=false;particles.push(new DamageText(bw.x,bw.y-14,'倍击!','#ffaa44'));}
         const mult = hit ? hit.multiplier : 1.5;
         Sound.attack();
         damageBoss(dmg, mult);
@@ -696,7 +783,8 @@ function handleBattleClick(bw) {
       refreshWords();
       return;
     }
-    // 普通敌人
+    // 普通敌人（走到这里必命中，消耗凝神倍击）
+    if(nextAttackBoost){nextAttackBoost=false;skillState.ready=false;particles.push(new DamageText(bw.x,bw.y-14,'倍击!','#ffaa44'));}
     dealDamage(dmg,combo>=3);
 
     if([3,5,7,10].includes(combo+1)) Sound.comboMilestone(combo+1); else Sound.attack();
@@ -724,11 +812,21 @@ function handleBattleClick(bw) {
     bw.alive=false;bw.targetAlpha=0;refreshWords();
     return;
   }
-  if(bw.cat==='愈'){
-    const healAmt=3+Math.floor(Math.random()*3); // 3~5 HP
-    playerHP=Math.min(100,playerHP+healAmt);updatePlayerUI();Sound.heal();
-    for(let i=0;i<6;i++) particles.push(new HitParticle(bw.x,bw.y,'#44dd88','+'));
-    particles.push(new DamageText(bw.x,bw.y-8,`+${healAmt}`,'#44dd88'));
+  if(bw.cat==='符'){
+    const t = typeof playerTalisman!=='undefined' ? playerTalisman : null;
+    if(!t){ bw.alive=false; bw.targetAlpha=0; refreshWords(); return; }
+    const healAmt = t.healMin + Math.floor(Math.random()*(t.healMax - t.healMin + 1));
+    playerHP=Math.min(playerMaxHP,playerHP+healAmt);updatePlayerUI();Sound.heal();
+    for(let i=0;i<8;i++) particles.push(new HitParticle(bw.x,bw.y,t.color,'+'));
+    particles.push(new DamageText(bw.x,bw.y-8,`+${healAmt}`,t.color));
+    // 护身符：额外附加护盾
+    if(t.shieldOnHeal){
+      const maxShield = (typeof playerArmor!=='undefined' && playerArmor && playerArmor.maxShield) ? playerArmor.maxShield : 15;
+      const added = t.shieldOnHeal;
+      shieldHP = Math.min(maxShield, (hasShield ? shieldHP : 0) + added);
+      hasShield = true;
+      updatePlayerUI();
+    }
     bw.alive=false;bw.targetAlpha=0;refreshWords();
     return;
   }
