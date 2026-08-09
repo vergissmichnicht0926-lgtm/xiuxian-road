@@ -16,6 +16,7 @@ let bestiaryData = null;        // 内存中的图鉴数据
 let bestiaryAlpha = 0;
 let bestiaryScrollY = 0;
 let bestiaryMaxScroll = 0;
+let bestiaryDetail = null; // 记忆详情弹窗：{tab,id,name,icon,iconColor,category,source,desc} 快照
 const BESTIARY_KEY = 'consciousness_sea_bestiary';
 
 // ═══════════════ 图鉴条目模板 ═══════════════
@@ -102,26 +103,35 @@ const BESTIARY_ENEMY_DEFS = {
   },
 };
 
-// 装备图鉴定义
-const BESTIARY_EQUIP_DEFS = {
-  // 武器
-  'beginner_brush': { id:'beginner_brush', name:'初学者之笔', category:'武器', desc:'UCRB标准配发的词元笔。稳定均衡，陪伴你走过了最初的潜航。', icon:'笔' },
-  'star_shatter':    { id:'star_shatter', name:'碎星之刃', category:'武器', desc:'攻字仅4枚，但一击碎星。重锤低速高伤。', icon:'碎' },
-  'blaze_heaven':    { id:'blaze_heaven', name:'焚天', category:'武器', desc:'攻字7枚满屏烈焰，低伤高频，附「炎」debuff灼烧。', icon:'焚' },
-  'frost_verse':     { id:'frost_verse', name:'霜序', category:'武器', desc:'攻字6枚凝寒而生，附带减速，控场致胜。', icon:'霜' },
-  // 防具
-  'thin_silk':       { id:'thin_silk', name:'薄绢', category:'防具', desc:'轻薄的意识纤维编织。减伤1，每字3盾，上限15。', icon:'绢' },
-  'mind_wall':       { id:'mind_wall', name:'意识壁垒', category:'防具', desc:'防字仅1枚却坚不可摧。减伤4，每字8盾，上限30。', icon:'壁' },
-  'light_veil':      { id:'light_veil', name:'流光之纱', category:'防具', desc:'防字3枚如流光掠影。减伤2，每字2盾，上限8，20%闪避。', icon:'纱' },
-  // 技能
-  'concentration':   { id:'concentration', name:'凝神', category:'技能', desc:'凝聚心神，下一次攻击威力倍增。', icon:'凝' },
-  'time_freeze':     { id:'time_freeze', name:'时间暂停', category:'技能', desc:'干扰噪点的时间感知，冻结敌人行动4秒。', icon:'停' },
-  'excalibur':       { id:'excalibur', name:'ex咖喱棒', category:'技能', desc:'不断收集ex充能，由你决定何时释放。充能越高伤害越大。', icon:'e' },
-  // 护符
-  'vitality_charm':  { id:'vitality_charm', name:'回春符', category:'护符', desc:'符字×2，点击回复4~7点。均衡稳定，入门首选。', icon:'春' },
-  'nectar_charm':    { id:'nectar_charm', name:'甘露符', category:'护符', desc:'符字×1，低频但大额回复12~18点。危急时刻的救赎。', icon:'露' },
-  'ward_charm':      { id:'ward_charm', name:'护身符', category:'护符', desc:'符字×1，回复3~5点并附加3点护盾。攻守兼备。', icon:'护' },
+// 装备图鉴定义（从 config EQUIPMENT 动态生成，单一数据源，避免重复维护）
+// 收录键与 config 装备 id 一一对应；icon 优先用覆写表，缺省取名称首字
+const BESTIARY_EQUIP_DEFS = {};
+const BESTIARY_EQUIP_GROUPS = [];
+const EQUIP_CATEGORY_LABELS = { weapons:'武器', armors:'防具', skills:'技能', talismans:'护符' };
+const EQUIP_ICON_OVERRIDE = {
+  beginner_brush:'笔', star_shatter:'碎', blaze_heaven:'焚', frost_verse:'霜',
+  thin_silk:'绢', mind_wall:'壁', light_veil:'纱',
+  concentration:'凝', time_freeze:'停', excalibur:'e',
+  vitality_charm:'春', nectar_charm:'露', ward_charm:'护',
 };
+if (typeof EQUIPMENT !== 'undefined') {
+  for (const [catKey, label] of [['weapons','武器'],['armors','防具'],['skills','技能'],['talismans','护符']]) {
+    const cat = EQUIPMENT[catKey];
+    if (!cat) continue;
+    BESTIARY_EQUIP_GROUPS.push({ key: catKey, label });
+    for (const [id, e] of Object.entries(cat)) {
+      BESTIARY_EQUIP_DEFS[id] = {
+        id, name: e.name,
+        category: label,     // 行内分类文案（未分组时展示）
+        group: catKey,       // 'weapons'|'armors'|'skills'|'talismans'，分组用
+        desc: e.desc,
+        icon: EQUIP_ICON_OVERRIDE[id] || e.name.charAt(0),
+        iconColor: e.color || '#8899bb',
+      };
+    }
+  }
+}
+
 
 // 记忆碎片定义（Boss击败后解锁）
 const BESTIARY_MEMORY_DEFS = {
@@ -276,12 +286,14 @@ function openBestiary() {
   bestiaryTab = 'enemies';
   bestiaryAlpha = 0;
   bestiaryScrollY = 0;
+  bestiaryDetail = null;
   if (typeof Sound !== 'undefined') Sound.uiOpen();
 }
 
 function closeBestiary() {
   bestiaryOpen = false;
   bestiaryAlpha = 0;
+  bestiaryDetail = null;
   if (typeof Sound !== 'undefined') Sound.uiClose();
 }
 
@@ -339,10 +351,7 @@ function drawBestiary(ctx) {
   });
 
   // 内容区
-  const contentY = H * 0.2;
-  const contentH = H * 0.65;
-  const marginX = W * 0.1;
-  const contentW = W * 0.8;
+  const { marginX, contentY, contentW, contentH } = getBestiaryContentRect();
 
   // 内容区背景
   ctx.fillStyle = 'rgba(255,255,255,0.02)';
@@ -361,7 +370,7 @@ function drawBestiary(ctx) {
   if (bestiaryTab === 'enemies') {
     drawBestiaryTab(ctx, BESTIARY_ENEMY_DEFS, bestiaryData.enemies, marginX, contentY, contentW, contentH);
   } else if (bestiaryTab === 'equipment') {
-    drawBestiaryTab(ctx, BESTIARY_EQUIP_DEFS, bestiaryData.equipment, marginX, contentY, contentW, contentH);
+    drawBestiaryTab(ctx, BESTIARY_EQUIP_DEFS, bestiaryData.equipment, marginX, contentY, contentW, contentH, BESTIARY_EQUIP_GROUPS);
   } else if (bestiaryTab === 'memories') {
     drawBestiaryTab(ctx, BESTIARY_MEMORY_DEFS, bestiaryData.memories, marginX, contentY, contentW, contentH);
   } else if (bestiaryTab === 'relics') {
@@ -394,70 +403,137 @@ function drawBestiary(ctx) {
   ctx.fillText('点击标签页切换 · 点击空白关闭', W * 0.5, H * 0.92);
 
   ctx.restore();
+
+  // 记忆详情弹窗（覆盖在最上层，含自身遮罩）
+  if (bestiaryDetail) drawBestiaryDetail(ctx);
 }
 
-/** 渲染单个标签页内容 */
-function drawBestiaryTab(ctx, defs, data, marginX, contentY, contentW, contentH) {
-  const itemH = 52, gap = 6;
-  const startY = contentY + 10;
-  const entries = Object.values(defs);
-  bestiaryMaxScroll = Math.max(0, entries.length * (itemH + gap) - (contentH - 20));
+// ═══════════════ 行模型（绘制/点击/滚动共用，杜绝几何二义） ═══════════════
+const BESTIARY_ITEM_H = 52, BESTIARY_GAP = 6, BESTIARY_HEADER_H = 24;
 
-  entries.forEach((entry, i) => {
-    const y = startY + i * (itemH + gap) - bestiaryScrollY;
-    if (y + itemH < contentY || y > contentY + contentH) return; // 裁剪
+/** 内容区几何（draw 与 click 共用） */
+function getBestiaryContentRect() {
+  return { marginX: W * 0.1, contentY: H * 0.2, contentW: W * 0.8, contentH: H * 0.65 };
+}
 
-    const discovered = data[entry.id] && data[entry.id].discovered;
-    const cx = marginX + 16;
-
-    // 行背景
-    if (discovered && mx > marginX && mx < marginX + contentW && my > y && my < y + itemH) {
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      ctx.fillRect(marginX + 4, y, contentW - 8, itemH);
+/** 组装逻辑行数组：[{type:'header',label}|{type:'entry',def}]；无 groups 时扁平 */
+function buildBestiaryRows(defs, groups) {
+  if (!groups || !groups.length) return Object.values(defs).map(d => ({ type: 'entry', def: d }));
+  const rows = [];
+  for (const g of groups) {
+    rows.push({ type: 'header', label: g.label, color: g.color });
+    for (const d of Object.values(defs)) {
+      if (d.group === g.key) rows.push({ type: 'entry', def: d });
     }
+  }
+  return rows;
+}
 
-    if (discovered) {
-      // 图标
-      const iconColor = entry.iconColor || '#8899bb';
-      ctx.fillStyle = iconColor;
-      ctx.font = '18px "Noto Serif SC","SimSun",serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(entry.icon || '?', cx, y + itemH / 2);
+/** 滚动上限：组标题也计入高度（最后一行 gap 略余） */
+function computeBestiaryMaxScroll(rows, contentH) {
+  let total = 0;
+  for (const r of rows) total += (r.type === 'header' ? BESTIARY_HEADER_H : BESTIARY_ITEM_H) + BESTIARY_GAP;
+  return Math.max(0, total - contentH + 20);
+}
 
-      // 名称 + 分类
-      ctx.fillStyle = '#c8ddf8';
-      ctx.font = '14px "Noto Serif SC","SimSun",serif';
-      ctx.textAlign = 'left';
-      ctx.fillText(entry.name, cx + 28, y + 14);
+/** 统一迭代逻辑行（y 从 contentY+10 起，header/entry 不同高） */
+function forEachBestiaryRow(rows, contentY, cb) {
+  let y = contentY + 10;
+  for (const row of rows) {
+    const h = row.type === 'header' ? BESTIARY_HEADER_H : BESTIARY_ITEM_H;
+    cb(row, y, h);
+    y += h + BESTIARY_GAP;
+  }
+}
 
+/** 渲染单个标签页内容（groups 可选：装备分组模式） */
+function drawBestiaryTab(ctx, defs, data, marginX, contentY, contentW, contentH, groups) {
+  const rows = buildBestiaryRows(defs, groups);
+  bestiaryMaxScroll = computeBestiaryMaxScroll(rows, contentH);
+  if (bestiaryScrollY > bestiaryMaxScroll) bestiaryScrollY = bestiaryMaxScroll; // 防切 tab 后旧滚动残留
+
+  forEachBestiaryRow(rows, contentY, (row, y, h) => {
+    const yy = y - bestiaryScrollY;
+    if (yy + h < contentY || yy > contentY + contentH) return; // 裁剪
+
+    if (row.type === 'header') {
+      drawBestiaryGroupHeader(ctx, row, marginX, contentW, yy);
+    } else {
+      drawBestiaryRow(ctx, row.def, data, marginX, contentW, yy, h, !!groups);
+    }
+  });
+}
+
+/** 组标题：左对齐文字 + 右侧分隔线 */
+function drawBestiaryGroupHeader(ctx, row, marginX, contentW, y) {
+  const cy = y + BESTIARY_HEADER_H / 2;
+  ctx.fillStyle = row.color || 'rgba(180,210,240,0.55)';
+  ctx.font = '13px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(row.label, marginX + 16, cy);
+  const w = ctx.measureText(row.label).width;
+  ctx.strokeStyle = 'rgba(180,210,240,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(marginX + 16 + w + 12, cy);
+  ctx.lineTo(marginX + contentW - 16, cy);
+  ctx.stroke();
+}
+
+/** 渲染单条目行（已发现/未发现）；hideCategory 时省略行内分类文案（分组模式） */
+function drawBestiaryRow(ctx, entry, data, marginX, contentW, y, itemH, hideCategory) {
+  const discovered = data[entry.id] && data[entry.id].discovered;
+  const cx = marginX + 16;
+
+  // 行背景
+  if (discovered && mx > marginX && mx < marginX + contentW && my > y && my < y + itemH) {
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillRect(marginX + 4, y, contentW - 8, itemH);
+  }
+
+  if (discovered) {
+    // 图标
+    const iconColor = entry.iconColor || '#8899bb';
+    ctx.fillStyle = iconColor;
+    ctx.font = '18px "Noto Serif SC","SimSun",serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(entry.icon || '?', cx, y + itemH / 2);
+
+    // 名称 + 分类
+    ctx.fillStyle = '#c8ddf8';
+    ctx.font = '14px "Noto Serif SC","SimSun",serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(entry.name, cx + 28, y + 14);
+
+    if (!hideCategory) {
       ctx.fillStyle = 'rgba(200,210,230,0.35)';
       ctx.font = '10px "Noto Serif SC","SimSun",serif';
       ctx.fillText(entry.category || '', cx + 28, y + 32);
-
-      // 描述（右侧）
-      ctx.fillStyle = 'rgba(180,190,210,0.45)';
-      ctx.font = '10px "Noto Serif SC","SimSun",serif';
-      ctx.textAlign = 'left';
-      const descMaxW = contentW - 160;
-      ctx.fillText(truncateText(ctx, entry.desc || '', descMaxW), cx + 130, y + itemH / 2);
-
-    } else {
-      // 未解锁：???
-      ctx.fillStyle = 'rgba(150,150,170,0.2)';
-      ctx.font = '18px "Noto Serif SC","SimSun",serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('?', cx, y + itemH / 2);
-
-      ctx.fillStyle = 'rgba(150,150,170,0.25)';
-      ctx.font = '14px "Noto Serif SC","SimSun",serif';
-      ctx.textAlign = 'left';
-      ctx.fillText('???', cx + 28, y + 18);
-
-      ctx.fillStyle = 'rgba(150,150,170,0.15)';
-      ctx.font = '10px "Noto Serif SC","SimSun",serif';
-      ctx.fillText('尚未发现', cx + 28, y + 34);
     }
-  });
+
+    // 描述（右侧）
+    ctx.fillStyle = 'rgba(180,190,210,0.45)';
+    ctx.font = '10px "Noto Serif SC","SimSun",serif';
+    ctx.textAlign = 'left';
+    const descMaxW = contentW - 160;
+    ctx.fillText(truncateText(ctx, entry.desc || '', descMaxW), cx + 130, y + itemH / 2);
+
+  } else {
+    // 未解锁：???
+    ctx.fillStyle = 'rgba(150,150,170,0.2)';
+    ctx.font = '18px "Noto Serif SC","SimSun",serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', cx, y + itemH / 2);
+
+    ctx.fillStyle = 'rgba(150,150,170,0.25)';
+    ctx.font = '14px "Noto Serif SC","SimSun",serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('???', cx + 28, y + 18);
+
+    ctx.fillStyle = 'rgba(150,150,170,0.15)';
+    ctx.font = '10px "Noto Serif SC","SimSun",serif';
+    ctx.fillText('尚未发现', cx + 28, y + 34);
+  }
 }
 
 /** 截断文本以适应宽度 */
@@ -470,47 +546,214 @@ function truncateText(ctx, text, maxW) {
   return truncated + '…';
 }
 
+/** 自动换行：逐字符累积测宽，超出 maxW 折行。返回行数组（不含尾空行）。依赖调用方已设 ctx.font */
+function wrapText(ctx, text, maxW) {
+  if (!text) return [];
+  const out = [], paras = String(text).split('\n');
+  for (const seg of paras) {
+    let line = '';
+    for (const ch of seg) {
+      if (ctx.measureText(line + ch).width > maxW && line.length > 0) { out.push(line); line = ch; }
+      else line += ch;
+    }
+    out.push(line);
+  }
+  while (out.length && out[out.length - 1] === '') out.pop();
+  return out;
+}
+
 // ═══════════════ 交互 ═══════════════
+
+const BESTIARY_TABS = [
+  { key: 'enemies', label: '敌人' },
+  { key: 'equipment', label: '装备' },
+  { key: 'memories', label: '记忆' },
+  { key: 'relics', label: '遗响' },
+];
+const BESTIARY_TAB_W = 80, BESTIARY_TAB_H = 32, BESTIARY_TAB_GAP = 12;
+
+/** 命中标签栏，返回 tab key 或 null（draw 与 click 共用几何） */
+function hitBestiaryTab(cx, cy) {
+  const tabStartX = W * 0.5 - (BESTIARY_TABS.length * BESTIARY_TAB_W + (BESTIARY_TABS.length - 1) * BESTIARY_TAB_GAP) / 2 + BESTIARY_TAB_W / 2;
+  const tabY = H * 0.14;
+  for (let i = 0; i < BESTIARY_TABS.length; i++) {
+    const tx = tabStartX + i * (BESTIARY_TAB_W + BESTIARY_TAB_GAP);
+    if (cx > tx - BESTIARY_TAB_W/2 && cx < tx + BESTIARY_TAB_W/2 && cy > tabY - BESTIARY_TAB_H/2 && cy < tabY + BESTIARY_TAB_H/2) {
+      return BESTIARY_TABS[i].key;
+    }
+  }
+  return null;
+}
+
+function bestiaryDefsFor(tab) {
+  return tab === 'enemies' ? BESTIARY_ENEMY_DEFS
+    : tab === 'equipment' ? BESTIARY_EQUIP_DEFS
+    : tab === 'memories' ? BESTIARY_MEMORY_DEFS
+    : BESTIARY_RELIC_DEFS;
+}
+
+/** 打开条目详情（快照字段，不依赖后续 defs 变化） */
+function openBestiaryDetail(tab, id) {
+  const d = (bestiaryDefsFor(tab) || {})[id];
+  if (!d) return;
+  bestiaryDetail = {
+    tab, id,
+    name: d.name, icon: d.icon || '忆', iconColor: d.iconColor || '#2e86c1',
+    category: d.category || '', source: d.source || '', desc: d.desc || '',
+  };
+  if (typeof Sound !== 'undefined' && Sound.uiClick) Sound.uiClick();
+}
+
+function closeBestiaryDetail() {
+  bestiaryDetail = null;
+  if (typeof Sound !== 'undefined' && Sound.uiClose) Sound.uiClose();
+}
+
+/** 命中内容区条目行（与绘制共用行模型，叠加 bestiaryScrollY）。返回 {id,discovered} 或 null */
+function hitTestBestiaryEntry(cx, cy, defs, data, groups) {
+  const rect = getBestiaryContentRect();
+  if (!(cx > rect.marginX && cx < rect.marginX + rect.contentW && cy > rect.contentY && cy < rect.contentY + rect.contentH)) return null;
+  const rows = buildBestiaryRows(defs, groups);
+  let hit = null;
+  forEachBestiaryRow(rows, rect.contentY, (row, y, h) => {
+    const yy = y - bestiaryScrollY;
+    if (cy > yy && cy < yy + h) {
+      if (row.type === 'entry') hit = { id: row.def.id, discovered: !!(data && data[row.def.id] && data[row.def.id].discovered) };
+      else hit = null; // 点中组标题不算
+    }
+  });
+  return hit;
+}
 
 function handleBestiaryClick(cx, cy) {
   if (!bestiaryOpen) return;
+  const rect = getBestiaryContentRect();
 
-  // 标签栏点击
-  const tabs = [
-    { key: 'enemies', label: '敌人' },
-    { key: 'equipment', label: '装备' },
-    { key: 'memories', label: '记忆' },
-    { key: 'relics', label: '遗响' },
-  ];
-  const tabW = 80, tabH = 32, tabGap = 12;
-  const tabStartX = W * 0.5 - (tabs.length * tabW + (tabs.length - 1) * tabGap) / 2 + tabW / 2;
-  const tabY = H * 0.14;
-
-  for (let i = 0; i < tabs.length; i++) {
-    const tx = tabStartX + i * (tabW + tabGap);
-    if (cx > tx - tabW/2 && cx < tx + tabW/2 && cy > tabY - tabH/2 && cy < tabY + tabH/2) {
-      bestiaryTab = tabs[i].key;
+  // ① 详情弹窗（模态）：标签 → 关详情并切 tab；✕ → 关；面板内 → 屏蔽；面板外 → 关详情
+  if (bestiaryDetail) {
+    const tab = hitBestiaryTab(cx, cy);
+    if (tab) {
+      bestiaryDetail = null;
+      bestiaryTab = tab;
+      bestiaryScrollY = 0;
       if (typeof Sound !== 'undefined') Sound.uiClick();
       return;
     }
+    const { px, py, pw, ph } = getBestiaryDetailPanelRect();
+    if (Math.hypot(cx - (px + pw - 24), cy - (py + 24)) <= 14) { closeBestiaryDetail(); return; }
+    if (cx > px && cx < px + pw && cy > py && cy < py + ph) return; // 面板内屏蔽
+    closeBestiaryDetail();
+    return;
   }
 
-  // 内容区外 → 关闭
-  const contentY = H * 0.2;
-  const contentH = H * 0.65;
-  const marginX = W * 0.1;
-  const contentW = W * 0.8;
-  if (!(cx > marginX && cx < marginX + contentW && cy > contentY && cy < contentY + contentH)) {
-    closeBestiary();
+  // ② 标签栏
+  const tab = hitBestiaryTab(cx, cy);
+  if (tab) {
+    bestiaryTab = tab;
+    bestiaryScrollY = 0;
+    if (typeof Sound !== 'undefined') Sound.uiClick();
+    return;
   }
+
+  // ③ 内容区：仅记忆页打开已发现条目的详情
+  if (cx > rect.marginX && cx < rect.marginX + rect.contentW && cy > rect.contentY && cy < rect.contentY + rect.contentH) {
+    if (bestiaryTab === 'memories') {
+      const hit = hitTestBestiaryEntry(cx, cy, BESTIARY_MEMORY_DEFS, bestiaryData.memories);
+      if (hit && hit.discovered) openBestiaryDetail('memories', hit.id);
+    }
+    return;
+  }
+
+  // ④ 内容区外 → 关图鉴
+  closeBestiary();
+}
+
+// ═══════════════ 记忆详情弹窗 ═══════════════
+
+function getBestiaryDetailPanelRect() {
+  const pw = Math.min(480, W * 0.62), ph = Math.min(360, H * 0.6);
+  return { px: (W - pw) / 2, py: (H - ph) / 2, pw, ph };
+}
+
+/** 详情弹窗绘制：遮罩 + 圆角面板 + 图标/名称/来源/分类 + 分隔线 + 正文多行 + ✕ */
+function drawBestiaryDetail(ctx) {
+  const d = bestiaryDetail;
+  if (!d) return;
+  ctx.save();
+  ctx.globalAlpha = bestiaryAlpha;
+
+  // 遮罩
+  ctx.fillStyle = 'rgba(2,2,18,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  const { px, py, pw, ph } = getBestiaryDetailPanelRect();
+
+  // 面板
+  ctx.fillStyle = 'rgba(12,14,34,0.98)';
+  ctx.strokeStyle = 'rgba(180,210,240,0.3)';
+  ctx.lineWidth = 1;
+  roundRect(ctx, px, py, pw, ph, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  // 图标
+  ctx.fillStyle = d.iconColor;
+  ctx.font = '30px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(d.icon, px + 44, py + 40);
+
+  // 名称
+  ctx.fillStyle = '#e8eef8';
+  ctx.font = '18px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(d.name, px + 78, py + 30);
+
+  // 来源（右上）+ 分类
+  ctx.fillStyle = 'rgba(160,180,210,0.5)';
+  ctx.font = '11px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(d.source || d.category || '', px + pw - 42, py + 30);
+  if (d.category) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(180,210,240,0.4)';
+    ctx.font = '11px "Noto Serif SC","SimSun",serif';
+    ctx.fillText(d.category, px + 78, py + 54);
+  }
+
+  // 分隔线
+  ctx.strokeStyle = 'rgba(180,210,240,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(px + 20, py + 78);
+  ctx.lineTo(px + pw - 20, py + 78);
+  ctx.stroke();
+
+  // 正文（多行自动换行，超出面板截断）
+  ctx.fillStyle = 'rgba(200,210,230,0.9)';
+  ctx.font = '14px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const lineH = 22;
+  const bodyLines = wrapText(ctx, d.desc, pw - 40);
+  const maxLines = Math.floor((ph - 96) / lineH);
+  bodyLines.slice(0, maxLines).forEach((ln, i) => {
+    ctx.fillText(ln, px + 20, py + 96 + i * lineH);
+  });
+
+  // ✕ 关闭钮
+  ctx.fillStyle = 'rgba(180,200,220,0.6)';
+  ctx.font = '16px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('✕', px + pw - 24, py + 24);
+
+  ctx.restore();
 }
 
 // 初始化加载（安全包裹，隐私模式下localStorage不可用时静默降级）
 try { loadBestiary(); } catch(e) { bestiaryData = { enemies:{}, equipment:{}, memories:{}, relics:{} }; }
 
-// 图鉴滚动支持（滚轮 / 触控板）
+// 图鉴滚动支持（滚轮 / 触控板；详情弹窗打开时冻结列表滚动）
 window.addEventListener('wheel', e => {
-  if (!bestiaryOpen) return;
+  if (!bestiaryOpen || bestiaryDetail) return;
   e.preventDefault();
   bestiaryScrollY = Math.max(0, Math.min(bestiaryMaxScroll, bestiaryScrollY + e.deltaY));
 }, { passive: false });

@@ -346,12 +346,19 @@ function rollStartGear() {
   const wpnKeys = ['beginner_brush'].concat(Object.keys(EQUIPMENT.weapons).filter(k => k !== 'beginner_brush' && unlocked(k, 'weapon')));
   const armKeys = ['thin_silk'].concat(Object.keys(EQUIPMENT.armors).filter(k => k !== 'thin_silk' && unlocked(k, 'armor')));
   const talKeys = ['vitality_charm'].concat(Object.keys(EQUIPMENT.talismans).filter(k => k !== 'vitality_charm' && unlocked(k, 'talisman')));
-  if (typeof playerWeapon !== 'undefined') playerWeapon = EQUIPMENT.weapons[pick(wpnKeys)];
+  const wpn = EQUIPMENT.weapons[pick(wpnKeys)];
+  const arm = EQUIPMENT.armors[pick(armKeys)];
+  const tal = EQUIPMENT.talismans[pick(talKeys)];
+  // 图鉴：开局装备即记录（幂等）
+  if (typeof registerEquipment === 'function') {
+    registerEquipment(wpn.id); registerEquipment(arm.id); registerEquipment(tal.id);
+  }
+  if (typeof playerWeapon !== 'undefined') playerWeapon = wpn;
   if (typeof playerArmor !== 'undefined') {
-    playerArmor = EQUIPMENT.armors[pick(armKeys)];
+    playerArmor = arm;
     if (typeof playerDefense !== 'undefined') playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : (playerArmor.defense || 0);
   }
-  if (typeof playerTalisman !== 'undefined') playerTalisman = EQUIPMENT.talismans[pick(talKeys)];
+  if (typeof playerTalisman !== 'undefined') playerTalisman = tal;
 }
 
 /** 通关结算：本局装备获得计数 → 熟练度（仅通关调用；死亡/主动返回作废） */

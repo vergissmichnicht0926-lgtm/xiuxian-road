@@ -1244,9 +1244,13 @@ canvas.addEventListener('click',e=>{
     return;
   }
 
-  // Hub模式（优先于商店和地图；图鉴打开时跳过Hub点击）
-  if(typeof hubActive !== 'undefined' && hubActive && !(typeof bestiaryOpen !== 'undefined' && bestiaryOpen)) {
-    if(typeof handleHubClick === 'function') handleHubClick(cx, cy);
+  // Hub模式（优先于商店和地图；图鉴打开时优先图鉴交互，否则走Hub点击）
+  if(typeof hubActive !== 'undefined' && hubActive) {
+    if(typeof bestiaryOpen !== 'undefined' && bestiaryOpen) {
+      if(typeof handleBestiaryClick === 'function') handleBestiaryClick(cx, cy);
+    } else if(typeof handleHubClick === 'function') {
+      handleHubClick(cx, cy);
+    }
     return;
   }
 

@@ -555,6 +555,8 @@ function isOwnedEquip(itemType, itemKey) {
 }
 
 function showEquipPrompt(itemType, itemKey, itemData) {
+  // 图鉴：遇到装备即记录（幂等；商店购买另在 shop.js equipItem 记录）
+  if (typeof registerEquipment === 'function') registerEquipment(itemKey);
   const owned = isOwnedEquip(itemType, itemKey);
   equipPrompt = {
     itemType, itemKey, itemData,
