@@ -87,10 +87,11 @@
   <div id="ending-btns"></div>
 </div>
 
-<!-- 战败 -->
+<!-- 战败 / 潜航总结 -->
 <div id="defeat-overlay">
   <div id="defeat-title">意识崩解</div>
   <div id="defeat-sub">你的意识在深海中消散……</div>
+  <div id="defeat-stats"></div>
   <div id="defeat-btns">
     <div class="ending-btn" onclick="restartFromDefeat()">重新挑战</div>
     <div class="ending-btn" onclick="location.reload()" style="border-color:rgba(255,100,80,0.25);color:rgba(255,150,120,0.4);font-size:12px;">返回标题</div>
@@ -99,6 +100,7 @@
 
 <!-- JS 按依赖顺序加载 -->
 <script src="js/config.js"></script>
+<script src="js/echo.js"></script>
 <script src="js/sound.js"></script>
 <script src="js/particles.js"></script>
 <script src="js/dialogue.js"></script>

@@ -72,6 +72,12 @@ function getComboBonusMultiplier() {
   return 1.0 + level * 0.2;
 }
 
+/** 获取融合成功率加成（融合之缘修正，每级 +10%） */
+function getFusionLuck() {
+  const level = getUpgradeLevel('fusionLuck');
+  return level * 0.10;
+}
+
 // ═══════════════ 局外商店 UI ═══════════════
 
 let soulShopOpen = false;

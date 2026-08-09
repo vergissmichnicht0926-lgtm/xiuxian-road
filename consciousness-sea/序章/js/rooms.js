@@ -24,12 +24,15 @@ let eventMonsterDefeated = false;
 let eventMonsterWaves = 0;
 let eventMonsterWavePending = false;
 let eventMonsterReward = null;
+let eventStormReward = false; // 记忆风暴：胜利奖励碎片+遗响的标记
 let restBubbleActive = false;
 
 // ═══════════════ 入口 ═══════════════
 
 function startRoom(room) {
   currentDiveRoom = room;
+  // 记录抵达最深层（总结页统计）
+  if (typeof maxLayerReached !== 'undefined') maxLayerReached = Math.max(maxLayerReached, room.layer || 1);
   roomDialogueQueue = [];
   roomDialogueIndex = 0;
   roomCombatWaves = 0;
@@ -49,8 +52,10 @@ function startRoom(room) {
   eventMonsterWaves = 0;
   eventMonsterWavePending = false;
   eventMonsterReward = null;
+  eventStormReward = false;
   currentEventScenario = null;
   battleWords = typeof battleWords !== 'undefined' ? [] : battleWords;
+  if (typeof clearEnemyList === 'function') clearEnemyList();
   if (typeof enemyEntity !== 'undefined') enemyEntity = null;
   // 防御：重置敌人HP防止上一房间残留值（具体房间处理函数会覆盖）
   if (typeof enemyHP !== 'undefined') enemyHP = enemyMaxHP = 999;
@@ -133,10 +138,8 @@ function startStartRoom(room) {
   playRoomDialogue();
 }
 
-/** 战斗 — 噪点波次 */
-function startCombatRoom(room) {
-  const waves = room.waves || 3;
-  // 伤害 = 难度基础伤害 × 敌人类型倍率（enemyDmgMult）
+/** 计算战斗房敌人属性（难度基础 × 房间倍率 × 威胁修正），第一波/后续波/重试共用 */
+function buildCombatStats(room) {
   const baseDmg = (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].enemyDmg : [5,8];
   const dmgMult = room.enemyDmgMult || 1;
   const baseStats = {
@@ -146,13 +149,13 @@ function startCombatRoom(room) {
     noiseRate: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].noiseRate : 0.15,
     speed: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].speed : 0.8,
   };
-  // 应用威胁等级修正
-  let modified;
-  if (typeof applyThreatModifiers === 'function') {
-    modified = applyThreatModifiers(baseStats);
-  } else {
-    modified = baseStats;
-  }
+  return (typeof applyThreatModifiers === 'function') ? applyThreatModifiers(baseStats) : baseStats;
+}
+
+/** 战斗 — 噪点波次 */
+function startCombatRoom(room) {
+  const waves = room.waves || 3;
+  const modified = buildCombatStats(room);
   const hp = modified.enemyHP;
   const interval = modified.enemyInterval;
   const hard = room.hardMode || false;
@@ -173,12 +176,24 @@ function startCombatRoom(room) {
     enemyTimer = enemyInterval = interval;
   }
   if (typeof updateEnemyUI === 'function') updateEnemyUI();
-  // 重置敌人名称和HP条样式 + 生成敌人实体（名字对应攻击方式）
+  // 重置敌人名称和HP条样式 + 生成敌人编队（多敌+形状排列）
   const enemyName = document.getElementById('enemy-name');
   if (enemyName) enemyName.textContent = room.label || (hard ? '强化噪点' : '噪点');
   const enemyHPFill = document.getElementById('enemy-hp-fill');
   if (enemyHPFill) enemyHPFill.style.background = '';
-  if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(hard, room.enemyType);
+  if (typeof spawnEnemyFormation === 'function') {
+    const formationOpts = { layer: room.layer || 1, formation: pickFormation(1, room.layer || 1) };
+    // 分裂型第一轮：1 个，血/伤 ×1（后续轮次由 startNextCombatWave 递增）
+    if (room.enemyType === 'split' && typeof splitWaveParams === 'function') {
+      const sp = splitWaveParams(1);
+      formationOpts.count = sp.count;
+      formationOpts.hp = hp;
+      formationOpts.splitLevel = sp.splitLevel;
+    }
+    spawnEnemyFormation(hard, room.enemyType, formationOpts);
+  } else if (typeof spawnEnemyEntity === 'function') {
+    spawnEnemyEntity(hard, room.enemyType);
+  }
 
   // 进入战斗阶段
   if (typeof Tutorial !== 'undefined') {
@@ -207,62 +222,25 @@ function startCombatRoom(room) {
   playRoomDialogue();
 }
 
-/** 检查战斗波次：敌人被击败后生成下一波 */
+/** 检查战斗波次：场上敌人全灭后生成下一波 */
 function checkCombatWave() {
   if (!currentDiveRoom || currentDiveRoom.type !== 'combat') return;
   if (roomCombatWaves <= 0) return;
 
-  // 敌人刚被击败 → 标记本波清完
-  if (enemyHP <= 0 && !roomCombatWaveCleared) {
+  // 场上敌人全灭（多敌编队）→ 标记本波清完
+  const allDead = (typeof enemyList !== 'undefined') && enemyList.length > 0 && enemyList.every(e => !e.alive);
+  if (allDead && !roomCombatWaveCleared) {
     roomCombatWaveCleared = true;
 
-    // ── 分裂残响：主敌人被击败 → 分裂成 2 个残片（不扣波次）──
-    if (currentEnemyType === 'split' && splitChildrenRemaining === 0) {
-      splitChildrenRemaining = 2;
-      setTimeout(() => {
-        if (!currentDiveRoom || currentDiveRoom.type !== 'combat') return;
-        spawnSplitChild();
-        roomCombatWaveCleared = false;
-      }, 1000);
-      return;
-    }
-    // ── 分裂残片被击败 ──
-    if (currentEnemyType === 'split' && splitChildrenRemaining > 0) {
-      splitChildrenRemaining--;
-      if (splitChildrenRemaining > 0) {
-        setTimeout(() => {
-          if (!currentDiveRoom || currentDiveRoom.type !== 'combat') return;
-          spawnSplitChild();
-          roomCombatWaveCleared = false;
-        }, 1000);
-        return;
-      }
-      splitChildrenRemaining = 0;
-      roomCombatWaves--;
-    } else {
-      roomCombatWaves--;
-    }
+    // ⚠️ 分裂型敌人：不再"主敌分裂成残片"，改为按波次递增生成（splitWaveParams 在 startNextCombatWave 处理）
+    roomCombatWaves--;
 
     if (roomCombatWaves > 0) {
       // 延迟刷新下一波
       setTimeout(() => {
         if (!currentDiveRoom || currentDiveRoom.type !== 'combat') return;
-        const hp = currentDiveRoom.enemyHP || 40;
-        enemyHP = enemyMaxHP = hp + Math.floor(Math.random() * 10);
-        enemyTimer = enemyInterval = currentDiveRoom.enemyInterval || 6.0;
-        if (typeof updateEnemyUI === 'function') updateEnemyUI();
-        if (typeof balanceWords === 'function') balanceWords();
-        if (typeof Tutorial !== 'undefined') Tutorial.enterPhase(PHASE.BATTLE);
-        if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(currentDiveRoom.hardMode, currentDiveRoom.enemyType);
+        startNextCombatWave();
         roomCombatWaveCleared = false;
-        // 波次提示
-        if (typeof particles !== 'undefined' && typeof W !== 'undefined' && typeof H !== 'undefined') {
-          for (let i = 0; i < 12; i++) {
-            particles.push(new DamageText(W * 0.5, H * 0.3,
-              `第${currentDiveRoom.waves - roomCombatWaves + 1}波`, '#ff8866'));
-          }
-        }
-        if (typeof Sound !== 'undefined') Sound.anomaly();
       }, 1000);
     } else {
       // 全部波次完成 — 1秒等待后再进行奖励/返回判定
@@ -299,19 +277,64 @@ function checkCombatWave() {
   }
 }
 
-/** 分裂残响：生成一个分裂残片（小敌人，HP减半，间隔更短） */
-function spawnSplitChild() {
-  const hp = currentDiveRoom ? (currentDiveRoom.enemyHP || 40) : 40;
-  enemyHP = enemyMaxHP = Math.floor(hp / 2) + Math.floor(Math.random() * 5);
-  enemyTimer = enemyInterval = ((currentDiveRoom && currentDiveRoom.enemyInterval) || 6.0) * 0.7;
+/** 生成下一波敌人编队 */
+/** 分裂残响波次参数：第N轮 2^(N-1) 个，血/伤 ×0.5^(N-1) */
+function splitWaveParams(waveNo) {
+  return {
+    count: Math.pow(2, waveNo - 1),   // 1 → 2 → 4
+    mult: Math.pow(0.5, waveNo - 1),  // 1 → 0.5 → 0.25
+    splitLevel: waveNo,               // 1/2/3（伤害递减用）
+  };
+}
+
+function startNextCombatWave() {
+  const modified = buildCombatStats(currentDiveRoom);
+  const layer = currentDiveRoom.layer || 1;
+  const waveNo = currentDiveRoom.waves - roomCombatWaves + 1;
+  let enemyHp = modified.enemyHP + Math.floor(Math.random() * 10);
+  const opts = { layer: layer, formation: pickFormation(waveNo, layer) };
+  // 分裂型：按波次递增 1→2→4，血量逐轮减半
+  if (currentDiveRoom.enemyType === 'split') {
+    const sp = splitWaveParams(waveNo);
+    opts.count = sp.count;
+    opts.hp = Math.floor(modified.enemyHP * sp.mult) + Math.floor(Math.random() * 5);
+    opts.splitLevel = sp.splitLevel;
+    enemyHp = opts.hp;
+  }
+  enemyHP = enemyMaxHP = enemyHp;
+  enemyTimer = enemyInterval = modified.enemyInterval;
   if (typeof updateEnemyUI === 'function') updateEnemyUI();
   if (typeof balanceWords === 'function') balanceWords();
   if (typeof Tutorial !== 'undefined') Tutorial.enterPhase(PHASE.BATTLE);
-  if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(false, 'split');
+  if (typeof spawnEnemyFormation === 'function') {
+    spawnEnemyFormation(currentDiveRoom.hardMode, currentDiveRoom.enemyType, opts);
+  } else if (typeof spawnEnemyEntity === 'function') {
+    spawnEnemyEntity(currentDiveRoom.hardMode, currentDiveRoom.enemyType);
+  }
+  // 波次提示
   if (typeof particles !== 'undefined' && typeof W !== 'undefined' && typeof H !== 'undefined') {
-    particles.push(new DamageText(W * 0.5, H * 0.3, '分裂！', '#ff9966'));
+    for (let i = 0; i < 12; i++) {
+      particles.push(new DamageText(W * 0.5, H * 0.3, `第${waveNo}波`, '#ff8866'));
+    }
   }
   if (typeof Sound !== 'undefined') Sound.anomaly();
+}
+
+/** 玩家死亡重试：重建当前波次编队（battle.js handlePlayerDeath 调用） */
+function respawnCurrentWave() {
+  if (!currentDiveRoom || currentDiveRoom.type !== 'combat') return;
+  const modified = buildCombatStats(currentDiveRoom);
+  enemyHP = enemyMaxHP = modified.enemyHP;
+  enemyTimer = enemyInterval = modified.enemyInterval;
+  updateEnemyUI();
+  balanceWords();
+  const layer = currentDiveRoom.layer || 1;
+  const waveNo = currentDiveRoom.waves - roomCombatWaves + 1;
+  if (typeof spawnEnemyFormation === 'function') {
+    spawnEnemyFormation(currentDiveRoom.hardMode, currentDiveRoom.enemyType, { layer: layer, formation: pickFormation(waveNo, layer) });
+  } else if (typeof spawnEnemyEntity === 'function') {
+    spawnEnemyEntity(currentDiveRoom.hardMode, currentDiveRoom.enemyType);
+  }
 }
 
 /** 静流 — 满血 + 零的对话 + 绿色治愈泡泡 */
@@ -514,11 +537,32 @@ function spawnFakeWeapons() {
 let equipPrompt = null; // { itemType, itemKey, itemData, x, y, options }
 
 /** 显示装备切换提示（暂停游戏，二选一） */
+/** 是否已拥有某装备（决定拾取提示走「融合强化」还是「替换/保留」） */
+function isOwnedEquip(itemType, itemKey) {
+  if (itemType === 'weapon') {
+    if (typeof unlockedWeapons !== 'undefined' && unlockedWeapons.has(itemKey)) return true;
+    return playerWeapon && playerWeapon.id === itemKey;
+  }
+  if (itemType === 'armor') {
+    if (typeof unlockedArmors !== 'undefined' && unlockedArmors.has(itemKey)) return true;
+    return playerArmor && playerArmor.id === itemKey;
+  }
+  if (itemType === 'talisman') {
+    if (typeof unlockedTalismans !== 'undefined' && unlockedTalismans.has(itemKey)) return true;
+    return playerTalisman && playerTalisman.id === itemKey;
+  }
+  return false;
+}
+
 function showEquipPrompt(itemType, itemKey, itemData) {
+  const owned = isOwnedEquip(itemType, itemKey);
   equipPrompt = {
     itemType, itemKey, itemData,
     x: W*0.5, y: H*0.55,
-    options: [
+    options: owned ? [
+      { text:'融合强化', x: W*0.38, y: H*0.62, action:'fuse' },
+      { text:'放弃',     x: W*0.62, y: H*0.62, action:'keep' },
+    ] : [
       { text:'替换装备', x: W*0.38, y: H*0.62, action:'replace' },
       { text:'保留原装备', x: W*0.62, y: H*0.62, action:'keep' },
     ],
@@ -595,22 +639,30 @@ function handleEquipPromptClick(opt) {
   if (opt.action === 'replace') {
     Sound.itemGet();
     const p = equipPrompt;
+    // 装备获得计数（熟练度/开局池解锁）
+    if (p.itemType !== 'skill' && typeof runEquipGains !== 'undefined' && runEquipGains) {
+      runEquipGains[p.itemKey] = (runEquipGains[p.itemKey] || 0) + 1;
+    }
     if (p.itemType === 'weapon') {
       if (typeof playerWeapon !== 'undefined') playerWeapon = p.itemData;
       if (typeof unlockedWeapons !== 'undefined') unlockedWeapons.add(p.itemKey);
     } else if (p.itemType === 'armor') {
       if (typeof playerArmor !== 'undefined') {
         playerArmor = p.itemData;
-        if (typeof playerDefense !== 'undefined') playerDefense = playerArmor.defense || 0;
+        if (typeof unlockedArmors !== 'undefined') unlockedArmors.add(p.itemKey);
+        if (typeof playerDefense !== 'undefined') playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : (playerArmor.defense || 0);
       }
     } else if (p.itemType === 'talisman') {
       if (typeof playerTalisman !== 'undefined') playerTalisman = p.itemData;
+      if (typeof unlockedTalismans !== 'undefined') unlockedTalismans.add(p.itemKey);
     }
     if (typeof updatePlayerUI === 'function') updatePlayerUI();
     if (typeof particles !== 'undefined') {
       for (let i = 0; i < 15; i++) particles.push(new HitParticle(equipPrompt.x, equipPrompt.y, '#ffdd44', '◆'));
       particles.push(new DamageText(equipPrompt.x, equipPrompt.y - 10, `装备: ${p.itemData.name}`, '#ffdd44'));
     }
+  } else if (opt.action === 'fuse') {
+    doFusion(equipPrompt);
   } else {
     if (typeof particles !== 'undefined') {
       particles.push(new DamageText(equipPrompt.x, equipPrompt.y, '已丢弃', '#888888'));
@@ -620,13 +672,56 @@ function handleEquipPromptClick(opt) {
   // 继续房间流程
   if (roomTreasureWord) roomTreasureWord = null;
   const inCh1Equip = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  const plainLine = opt.action === 'fuse'
+    ? '（相同的词元相互吸引。装备发生了微妙的变化。）'
+    : (opt.action === 'replace' ? '（换上装备。词元在指尖微微发烫。）' : '（还是原来的顺手。收好，继续走。）');
+  const zeroLine = opt.action === 'fuse'
+    ? '融合的痕迹……很特别。'
+    : (opt.action === 'replace' ? '不错的选择。继续前进吧。' : '也好。适合自己的才是最好的。');
   roomDialogueQueue = inCh1Equip ? [
-    { mode:'plain', text: opt.action === 'replace' ? '（换上装备。词元在指尖微微发烫。）' : '（还是原来的顺手。收好，继续走。）' },
+    { mode:'plain', text: plainLine },
   ] : [
-    { mode:'float', speaker:'零', text: opt.action === 'replace' ? '不错的选择。继续前进吧。' : '也好。适合自己的才是最好的。' },
+    { mode:'float', speaker:'零', text: zeroLine },
   ];
   roomDialogueIndex = 0;
   playRoomDialogue();
+}
+
+/** 装备融合：同名拾取 → 有概率升等级（基础成功率 + 局外 fusionLuck） */
+function doFusion(p) {
+  const lv = (typeof getEquipLevel === 'function') ? getEquipLevel(p.itemKey) : 1;
+  const maxLv = (typeof EQUIP_FUSION !== 'undefined') ? EQUIP_FUSION.MAX_LEVEL : 5;
+  if (lv >= maxLv) {
+    // 已满级 → 拾取物炼化为碎片
+    if (typeof grantShards === 'function') grantShards(30, p.x, p.y);
+    particles.push(new DamageText(p.x, p.y - 20, '已满级 · 炼化为碎片', '#ffcc44'));
+    if (typeof Sound !== 'undefined') Sound.itemGet();
+    return;
+  }
+  let chance = (typeof EQUIP_FUSION !== 'undefined') ? EQUIP_FUSION.BASE_SUCCESS : 0.45;
+  if (typeof getFusionLuck === 'function') chance += getFusionLuck();
+  if (Math.random() < chance) {
+    // 融合成功：装备等级+1
+    if (typeof equipmentLevels !== 'undefined') {
+      equipmentLevels[p.itemKey] = lv + 1;
+      // 融合强化也算一次获得（熟练度/开局池解锁）
+      if (typeof runEquipGains !== 'undefined' && runEquipGains) {
+        runEquipGains[p.itemKey] = (runEquipGains[p.itemKey] || 0) + 1;
+      }
+      if (p.itemType === 'armor' && playerArmor && playerArmor.id === p.itemKey && typeof playerDefense !== 'undefined') {
+        playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : (playerArmor.defense || 0);
+      }
+      if (typeof updatePlayerUI === 'function') updatePlayerUI();
+    }
+    particles.push(new DamageText(p.x, p.y - 20, `融合成功 · ${p.itemData.name} Lv.${lv + 1}`, '#ffdd44'));
+    for (let i = 0; i < 20; i++) particles.push(new HitParticle(p.x, p.y, '#ffdd44', '✦'));
+    if (typeof Sound !== 'undefined') Sound.boost();
+  } else {
+    // 融合失败：拾取物消散，原装备/等级不变
+    particles.push(new DamageText(p.x, p.y - 20, '融合失败 · 拾取物消散', '#888888'));
+    for (let i = 0; i < 12; i++) particles.push(new HitParticle(p.x, p.y, '#888888', '×'));
+    if (typeof Sound !== 'undefined') Sound.stun();
+  }
 }
 
 /** 宝物房间每帧检测 */
@@ -646,10 +741,23 @@ function checkTreasureRoom() {
   roomFakeWeapons = roomFakeWeapons.filter(f => f.alive);
 }
 
-/** 生成金色装备字（对话结束后调用） */
+/** 生成金色装备字（对话结束后调用；12%概率为遗响） */
 function spawnTreasureWord() {
   if (roomTreasureSpawned) return;
   roomTreasureSpawned = true;
+
+  // ── 遗响·宝箱概率出（12%）──
+  if (typeof ECHO_DEFS !== 'undefined' && typeof echoInventory !== 'undefined' && Math.random() < 0.12) {
+    const pool = Object.keys(ECHO_DEFS).filter(k => !echoInventory.includes(k));
+    if (pool.length) {
+      const ekey = pool[Math.floor(Math.random() * pool.length)];
+      const edef = ECHO_DEFS[ekey];
+      const rr = ECHO_RARITY[edef.rarity] || ECHO_RARITY.common;
+      buildTreasureWord({ itemType:'echo', itemKey:ekey, itemData:edef, color:rr.color, glow:rr.color });
+      spawnFakeWeapons();
+      return;
+    }
+  }
 
   // 随机选一件武器或防具（非初始装备）
   const wpnKeys = Object.keys(EQUIPMENT.weapons).filter(k => k !== 'beginner_brush');
@@ -663,11 +771,18 @@ function spawnTreasureWord() {
     : pick.type === 'talisman'
       ? EQUIPMENT.talismans[pick.key]
       : EQUIPMENT.armors[pick.key];
+  // ⚠️ 深层掉落：武器有概率天生携带 buff（仅深层「遗憾」段，融合不产生）
+  if (pick.type === 'weapon' && typeof rollWeaponBuff === 'function') {
+    rollWeaponBuff(pick.key, (currentDiveRoom && currentDiveRoom.layer) || 1);
+  }
+  buildTreasureWord({ itemType:pick.type, itemKey:pick.key, itemData:item, color:'#ffdd44', glow:'#ccaa22' });
+}
 
+/** 构造金色装备/遗响字（共用模板；遗响走 collect 直接纳入） */
+function buildTreasureWord(cfg) {
   const cx = typeof W !== 'undefined' ? W * 0.5 : 600;
   const cy = typeof H !== 'undefined' ? H * 0.45 : 400;
 
-  // 创建一个特殊的金色文字对象
   roomTreasureWord = {
     x: cx, y: cy - 60,
     vx: (Math.random() - 0.5) * 0.6, vy: -0.2,
@@ -675,12 +790,12 @@ function spawnTreasureWord() {
     phase: Math.random() * Math.PI * 2, alive: true,
     hovered: false, glowExtra: 0, cooldown: 80, // 短暂冷却防止误触
     cat: 'treasure',
-    itemType: pick.type,
-    itemKey: pick.key,
-    itemData: item,
-    text: item.name,
-    color: '#ffdd44',
-    glow: '#ccaa22',
+    itemType: cfg.itemType,
+    itemKey: cfg.itemKey,
+    itemData: cfg.itemData,
+    text: cfg.itemData.name,
+    color: cfg.color,
+    glow: cfg.glow,
     update() {
       if (this.cooldown > 0) this.cooldown--;
       this.phase += 0.025;
@@ -734,6 +849,17 @@ function spawnTreasureWord() {
           particles.push(new HitParticle(this.x, this.y, this.color, '·'));
         }
       }
+      // 遗响：直接纳入，不走装备切换提示
+      if (this.itemType === 'echo') {
+        if (typeof grantEcho === 'function') grantEcho(this.itemKey);
+        roomTreasureWord = null;
+        roomDialogueIndex = 0;
+        roomDialogueQueue = [
+          { mode:'plain', text:'（一份记忆的余响融入意识。行囊里多了一枚「遗响」。）' },
+        ];
+        playRoomDialogue();
+        return;
+      }
       // 弹出切换提示（暂停游戏）
       showEquipPrompt(this.itemType, this.itemKey, this.itemData);
       this.alive = false; // 真装备从战场消失
@@ -742,7 +868,8 @@ function spawnTreasureWord() {
 }
 
 /** 事件 — 随机抽取场景 */
-const EVENT_SCENARIOS = [
+/* ── 通用事件池（所有章节可用、可重复）── */
+const GENERAL_EVENTS = [
   {
     id: 'crystal',
     dialogue: [
@@ -756,18 +883,234 @@ const EVENT_SCENARIOS = [
       { text:'小心绕过去',   action:'skip' },
     ],
   },
-  // 后续可扩展更多事件场景
+  {
+    id: 'water_mirror',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'一面由记忆编织的水镜。映出的脸孔……不属于你自己。' },
+      { mode:'plain', text:'（镜中浮现出一个装备更精良、伤痕也更深的身影，它开口了。）' },
+      { mode:'float', speaker:'我', text:'「我可以借你一份记忆。」它说。「但水会记住每一滴血。」' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（水镜。镜中映出一个装备更精良、伤痕也更深的「我」。）' },
+      { mode:'float', speaker:'我', text:'「我可以借你一份记忆。」它说。「但水会记住每一滴血。」' },
+    ],
+    options: [
+      { text:'献出 30 点意识完整度', action:'echo_deal', costHp:30, echoRarity:'common' },
+      { text:'离开水镜', action:'skip' },
+    ],
+  },
+  {
+    id: 'anchor_altar',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'一座由沉锚与记忆凝成的祭坛……它在索取「一部分的你」。' },
+      { mode:'plain', text:'（祭坛上的字迹闪烁着：留下无法挽回的，带走无法忘记的。）' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（沉锚与记忆凝成的祭坛。字迹闪烁：留下无法挽回的，带走无法忘记的。）' },
+    ],
+    options: [
+      { text:'以 15 点最大意识上限为祭', action:'echo_altar', costMaxHp:15, echoRarity:'rare' },
+      { text:'绕开祭坛', action:'skip' },
+    ],
+  },
+  {
+    id: 'echo_vortex',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'记忆的碎片在漩涡里打着转。只要抛出足够的意识碎片，就能捞起一段完整的回声。' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（记忆的碎片在漩涡里打着转。抛出碎片，就能捞起一段完整的回声。）' },
+    ],
+    options: [
+      { text:'用 40 碎片换取遗响', action:'echo_trade', costShards:40, echoRarity:null },
+      { text:'离开漩涡', action:'skip' },
+    ],
+  },
+  {
+    id: 'wreck',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'一艘沉没的潜航船骸。船体上爬满了意识腐蚀的痕迹。' },
+      { mode:'plain', text:'（货舱里似乎还封着没被腐蚀的东西。但撬开它需要花费碎片。）' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（沉没的潜航船骸。货舱里隐约有词元光芒——但要撬开得花点碎片。）' },
+    ],
+    options: [
+      { text:'花 35 碎片打捞', action:'wreck', costShards:35 },
+      { text:'离开船骸', action:'skip' },
+    ],
+  },
+  {
+    id: 'exile',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'一个意识残影蜷缩在角落。它太虚弱了，几乎要和背景融为一体。' },
+      { mode:'plain', text:'（它抬起头，用尽力气开口：「给我一点碎片。作为交换，我把一段记忆留给你。」）' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（一个虚弱的意识残影。它乞求碎片，承诺回赠一段记忆。）' },
+    ],
+    options: [
+      { text:'给它 25 碎片', action:'echo_trade', costShards:25, echoRarity:null },
+      { text:'无视它，离开', action:'skip' },
+    ],
+  },
+  {
+    id: 'storm',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'前方是记忆风暴。强行通过会被里面的执念纠缠……但风暴中心往往藏着好东西。' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（记忆风暴。硬闯危险，但风暴眼里的东西值得赌一把。）' },
+    ],
+    options: [
+      { text:'硬闯风暴', action:'storm' },
+      { text:'绕行', action:'skip' },
+    ],
+  },
+  {
+    id: 'rift',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'一道意识裂隙，像海沟一样深不见底。裂隙深处有什么在闪闪发光。' },
+      { mode:'plain', text:'（要拿到它，得把自己的一部分留在这里。裂隙会记住你付出的每一分。）' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（意识裂隙。深处有碎片闪光——但它要你的一部分作为代价。）' },
+    ],
+    options: [
+      { text:'以 20 点最大意识上限为祭', action:'rift', costMaxHp:20 },
+      { text:'离开裂隙', action:'skip' },
+    ],
+  },
+  {
+    id: 'spring',
+    dialogue: [
+      { mode:'float', speaker:'零', text:'一泓回响之泉。纯净的意识信息在这里缓慢循环，每一种回响都触手可及。' },
+    ],
+    ch1Dialogue: [
+      { mode:'plain', text:'（回响之泉。三段记忆在此交汇，只能取其一。）' },
+    ],
+    options: [
+      { text:'捧起治愈之泉', action:'heal_full' },
+      { text:'净化浑浊之泉', action:'threat_clear' },
+      { text:'盛取回响之水', action:'gain_shards' },
+    ],
+  },
 ];
 
+/* ── 独特事件池（第一章专属、只触发一次、碎片化剧情）──
+ * 碎片暗线：男主自愿反复失忆、只为回到深海找零。收录进图鉴「记忆」。
+ */
+const UNIQUE_EVENTS = [
+  {
+    id: 'name_echo', unique: true,
+    ch1Dialogue: [
+      { mode:'plain', text:'（一节语音残片，在深海里孤独地循环。沙哑的男声，是你的声音。）' },
+      { mode:'whisper', speaker:'我', text:'……记住她的名字。就算你忘了自己是谁，也别忘了她的名字。' },
+      { mode:'plain', text:'（声音戛然而止。你的心口空了一下——零的名字就在舌尖，却怎么也想不起来。）' },
+    ],
+    options: [
+      { text:'握住这段记忆', action:'unique_hold' },
+      { text:'让它沉下去', action:'unique_drop' },
+    ],
+  },
+  {
+    id: 'beacon', unique: true,
+    ch1Dialogue: [
+      { mode:'plain', text:'（一座废弃的潜航信标，锈迹斑斑，却还在工作。屏幕上滚动着一行字。）' },
+      { mode:'float', speaker:'我', text:'「信标：运转 10 年 3 个月零 7 天。最后一次标注——她还在下面。」' },
+      { mode:'plain', text:'（你盯着那行字。信标的时间戳，和你醒来的日子，隔了整整十年。）' },
+    ],
+    options: [
+      { text:'握住这段记忆', action:'unique_hold' },
+      { text:'让它沉下去', action:'unique_drop' },
+    ],
+  },
+  {
+    id: 'letter', unique: true,
+    ch1Dialogue: [
+      { mode:'plain', text:'（一封由词元凝成的信，被水流托着，没有寄出。）' },
+      { mode:'float', speaker:'我', text:'「如果读到这封信的人是我——那你又忘了一次。」' },
+      { mode:'float', speaker:'我', text:'「别让遗憾把你留在这片海里。它不值得。」' },
+      { mode:'plain', text:'（落款处没有名字，只有一个日期。那是你第一次潜航的日子。）' },
+    ],
+    options: [
+      { text:'握住这段记忆', action:'unique_hold' },
+      { text:'让它沉下去', action:'unique_drop' },
+    ],
+  },
+  {
+    id: 'light', unique: true,
+    ch1Dialogue: [
+      { mode:'plain', text:'（一段不属于你的记忆，像陈旧的录影。视角在黑暗的海底，数着日子。）' },
+      { mode:'whisper', speaker:'零', text:'……第四年。第五年。第九年。' },
+      { mode:'float', speaker:'零', text:'（一个光点从上方沉下来。她屏住呼吸看着它——但它又浮上去了。）' },
+      { mode:'plain', text:'（记忆的末尾，她轻声说：再来一次吧。我会等的。）' },
+    ],
+    options: [
+      { text:'握住这段记忆', action:'unique_hold' },
+      { text:'让它沉下去', action:'unique_drop' },
+    ],
+  },
+  {
+    id: 'fork', unique: true,
+    ch1Dialogue: [
+      { mode:'plain', text:'（一块凝固的「遗憾」。它冰凉，像一块界碑，上面刻着分岔的路。）' },
+      { mode:'float', speaker:'我', text:'（一条路通向海面，阳光和前程。一条路通向深海，黑暗和……她。）' },
+      { mode:'plain', text:'（你看着自己无数次站在岔路口。每一次，都选了深潜。）' },
+      { mode:'whisper', speaker:'我', text:'（你低声说：）我从来没后悔过这个选择。' },
+    ],
+    options: [
+      { text:'握住这段记忆', action:'unique_hold' },
+      { text:'让它沉下去', action:'unique_drop' },
+    ],
+  },
+  {
+    id: 'return', unique: true,
+    ch1Dialogue: [
+      { mode:'plain', text:'（散落的词元碎片拼成一份潜航记录。密密麻麻，全部是你。）' },
+      { mode:'float', speaker:'我', text:'「第 1 次：失忆。第 2 次：失忆。第 3 次……」' },
+      { mode:'plain', text:'（记录没有结尾。每一次你都重新出发，每一次你都回到这片海。）' },
+      { mode:'whisper', speaker:'我', text:'（你突然明白了什么，轻轻笑了一下。）原来我从来不是第一次来。' },
+    ],
+    options: [
+      { text:'握住这段记忆', action:'unique_hold' },
+      { text:'让它沉下去', action:'unique_drop' },
+    ],
+  },
+];
+
+// 独特事件一次性标记（局外持久：跨局保留，触发后不再出现）
+let uniqueEventsDone = [];
+function markUniqueEventDone(id) {
+  if (!uniqueEventsDone.includes(id)) {
+    uniqueEventsDone.push(id);
+    if (typeof registerMemory === 'function') registerMemory('unique_' + id);
+  }
+}
+
 function startEventRoom(room) {
-  const scenario = EVENT_SCENARIOS[Math.floor(Math.random() * EVENT_SCENARIOS.length)];
   const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  let scenario;
   if (inCh1) {
-    // 第一章肉鸽：零不在，男主独自面对
-    roomDialogueQueue = [
-      { mode:'plain', text:'（意识结晶。里面封着前人留下的装备。）' },
-      { mode:'float', speaker:'我', text:'……开，还是绕开？' },
-    ];
+    // 第一章：50% 出未触发的独特事件（碎片剧情优先），否则通用事件
+    const uniques = (typeof UNIQUE_EVENTS !== 'undefined') ? UNIQUE_EVENTS.filter(e => !uniqueEventsDone.includes(e.id)) : [];
+    if (uniques.length && Math.random() < 0.5) {
+      scenario = uniques[Math.floor(Math.random() * uniques.length)];
+    } else {
+      scenario = GENERAL_EVENTS[Math.floor(Math.random() * GENERAL_EVENTS.length)];
+    }
+  } else {
+    // 序章：只用通用池
+    scenario = GENERAL_EVENTS[Math.floor(Math.random() * GENERAL_EVENTS.length)];
+  }
+  if (inCh1) {
+    // 第一章肉鸽：零不在，男主独自面对；优先用场景自带的肉鸽对话
+    roomDialogueQueue = (scenario.ch1Dialogue && scenario.ch1Dialogue.length)
+      ? [...scenario.ch1Dialogue]
+      : [
+        { mode:'plain', text:'（意识结晶。里面封着前人留下的装备。）' },
+        { mode:'float', speaker:'我', text:'……开，还是绕开？' },
+      ];
   } else {
     roomDialogueQueue = [...scenario.dialogue];
   }
@@ -789,6 +1132,7 @@ function spawnEventOptions() {
     vx:0, vy:2, age:0, fadeIn: 1.2 + i * 0.3,
     dead:false, hovered:false,
     action: opt.action,
+    costHp: opt.costHp, costMaxHp: opt.costMaxHp, costShards: opt.costShards, echoRarity: opt.echoRarity,
   }));
 }
 
@@ -913,6 +1257,16 @@ function handleEventChoice(opt) {
       ];
       playRoomDialogue();
     }
+  } else if (opt.action === 'unique_hold' || opt.action === 'unique_drop') {
+    // 独特事件：第一章一次性碎片剧情（握住 / 沉下去）
+    handleUniqueEventChoice(opt);
+  } else if (opt.action === 'wreck' || opt.action === 'storm' || opt.action === 'rift'
+             || opt.action === 'heal_full' || opt.action === 'threat_clear' || opt.action === 'gain_shards') {
+    // 新通用事件：沉船打捞 / 记忆风暴 / 意识裂隙 / 回响之泉
+    handleNewGeneralEventChoice(opt);
+  } else if (opt.action === 'echo_deal' || opt.action === 'echo_altar' || opt.action === 'echo_trade') {
+    // 代价换遗响（水镜 / 锚点祭坛 / 回声漩涡）
+    handleEchoEventChoice(opt);
   } else {
     // 绕过去 — 威胁-1
     if (typeof threatLevel !== 'undefined') threatLevel = Math.max(0, threatLevel - 1);
@@ -935,6 +1289,135 @@ function handleEventChoice(opt) {
     ];
     playRoomDialogue();
   }
+}
+
+/** 代价换遗响：先付代价，再 roll 遗响并纳入 */
+function handleEchoEventChoice(opt) {
+  // 先付代价（clamp 防止负值）
+  if (opt.costHp && typeof playerHP !== 'undefined') {
+    playerHP = Math.max(1, playerHP - opt.costHp);
+    if (typeof updatePlayerUI === 'function') updatePlayerUI();
+  }
+  if (opt.costMaxHp && typeof playerMaxHP !== 'undefined') {
+    playerMaxHP = Math.max(20, playerMaxHP - opt.costMaxHp);
+    playerHP = Math.min(playerHP, playerMaxHP);
+    if (typeof updatePlayerUI === 'function') updatePlayerUI();
+  }
+  if (opt.costShards && typeof shards !== 'undefined') {
+    shards = Math.max(0, shards - opt.costShards);
+    if (typeof updateShardsDisplay === 'function') updateShardsDisplay();
+  }
+  // 掷遗响
+  const ekey = (typeof rollRandomEcho === 'function') ? rollRandomEcho(opt.echoRarity || null) : null;
+  if (ekey && typeof grantEcho === 'function') grantEcho(ekey);
+  // 无怪物战斗，直接完成房间
+  eventMonsterDefeated = true;
+  eventMonsterWaves = 0;
+  roomDialogueIndex = 0;
+  roomDialogueQueue = [
+    { mode:'float', speaker:'我',
+      text: ekey ? '（一段记忆的余响融入意识……行囊里多了一枚「遗响」。）' : '（什么也没能留下。）' },
+  ];
+  playRoomDialogue();
+}
+
+/** 独特事件：第一章一次性碎片剧情，无论选择都标记完成并收录图鉴 */
+function handleUniqueEventChoice(opt) {
+  if (currentEventScenario && typeof markUniqueEventDone === 'function') {
+    markUniqueEventDone(currentEventScenario.id);
+  }
+  if (opt.action === 'unique_hold') {
+    // 握住记忆：12 碎片 + 小幅回血
+    if (typeof grantShards === 'function') grantShards(12, W*0.5, H*0.5);
+    if (typeof playerHP !== 'undefined' && typeof playerMaxHP !== 'undefined') {
+      playerHP = Math.min(playerMaxHP, playerHP + 15);
+      if (typeof updatePlayerUI === 'function') updatePlayerUI();
+    }
+  }
+  // 无怪物战斗，直接完成房间
+  eventMonsterDefeated = true;
+  eventMonsterWaves = 0;
+  roomDialogueIndex = 0;
+  roomDialogueQueue = [{
+    mode:'plain',
+    text: opt.action === 'unique_hold'
+      ? '（一段记忆沉入意识深处。它在这里，但你暂时还无法读取它。）'
+      : '（你没有握住它。记忆缓缓沉下去，像一粒沙沉入海底。）',
+  }];
+  playRoomDialogue();
+}
+
+/** 新通用事件：沉船打捞 / 记忆风暴 / 意识裂隙 / 回响之泉 */
+function handleNewGeneralEventChoice(opt) {
+  if (opt.action === 'wreck') {
+    // 沉船：花 35 碎片打捞，70% 得未拥有装备 / 30% 失败
+    if (typeof shards !== 'undefined') { shards = Math.max(0, shards - 35); if (typeof updateShardsDisplay === 'function') updateShardsDisplay(); }
+    if (Math.random() < 0.7) {
+      const allEquip = [];
+      Object.keys(EQUIPMENT.weapons || {}).forEach(k => { if (k!=='beginner_brush' && !(typeof unlockedWeapons!=='undefined'&&unlockedWeapons.has(k)) && !(typeof playerWeapon!=='undefined'&&playerWeapon&&playerWeapon.id===k)) allEquip.push({type:'weapon',key:k,data:EQUIPMENT.weapons[k]}); });
+      Object.keys(EQUIPMENT.armors || {}).forEach(k => { if (k!=='thin_silk' && !(typeof playerArmor!=='undefined'&&playerArmor&&playerArmor.id===k)) allEquip.push({type:'armor',key:k,data:EQUIPMENT.armors[k]}); });
+      Object.keys(EQUIPMENT.talismans || {}).forEach(k => { if (!(typeof playerTalisman!=='undefined'&&playerTalisman&&playerTalisman.id===k)) allEquip.push({type:'talisman',key:k,data:EQUIPMENT.talismans[k]}); });
+      if (allEquip.length) {
+        const pick = allEquip[Math.floor(Math.random()*allEquip.length)];
+        if (typeof equipItem === 'function') equipItem(pick.type, pick.key, pick.data);
+        if (typeof particles !== 'undefined') for (let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.5,'#ffdd44','◆'));
+      } else {
+        if (typeof grantShards === 'function') grantShards(30, W*0.5, H*0.5); // 已全有 → 补偿碎片
+      }
+    } else {
+      if (typeof particles !== 'undefined') {
+        for (let i=0;i<10;i++) particles.push(new HitParticle(W*0.5,H*0.5,'#8899aa','×'));
+        particles.push(new DamageText(W*0.5,H*0.42,'打捞失败','#8899aa'));
+      }
+    }
+    roomDialogueQueue = [{ mode:'plain', text:'（船骸沉入更深处。你带着打捞到的东西离开。）' }];
+  } else if (opt.action === 'storm') {
+    // 记忆风暴：威胁+1，进事件怪物战，胜得 60 碎片 + 随机遗响
+    if (typeof threatLevel !== 'undefined') threatLevel = Math.min(10, threatLevel + 1);
+    enemyHP = enemyMaxHP = 80;
+    enemyTimer = enemyInterval = 3.5;
+    if (typeof updateEnemyUI === 'function') updateEnemyUI();
+    if (typeof spawnEnemyEntity === 'function') spawnEnemyEntity(true);
+    if (typeof Tutorial !== 'undefined') Tutorial.enterPhase(PHASE.BATTLE);
+    document.getElementById('enemy-zone').style.opacity = '1';
+    const enemyNameEl = document.getElementById('enemy-name');
+    if (enemyNameEl) enemyNameEl.textContent = '风暴执念';
+    const stageHint = document.getElementById('stage-hint');
+    if (stageHint) { stageHint.style.opacity='1'; stageHint.textContent='穿越风暴！'; }
+    if (typeof balanceWords === 'function') balanceWords();
+    // 2 波怪物，胜利按 eventStormReward 结算（checkEventMonster）
+    eventMonsterDefeated = false;
+    eventMonsterWaves = 2;
+    eventMonsterReward = null;
+    eventStormReward = true;
+    roomDialogueIndex = 0;
+    roomDialogueQueue = [{ mode:'float', speaker:'我', text:'穿过它。风暴眼里的东西，值得。', speed:30 }];
+    playRoomDialogue();
+    return;
+  } else if (opt.action === 'rift') {
+    // 意识裂隙：以 20 最大上限换 80 碎片
+    if (typeof playerMaxHP !== 'undefined') {
+      playerMaxHP = Math.max(20, playerMaxHP - 20);
+      playerHP = Math.min(playerHP, playerMaxHP);
+      if (typeof updatePlayerUI === 'function') updatePlayerUI();
+    }
+    if (typeof grantShards === 'function') grantShards(80, W*0.5, H*0.5);
+    roomDialogueQueue = [{ mode:'plain', text:'（裂隙记住了你付出的一部分。碎片在你掌心里凝聚。）' }];
+  } else if (opt.action === 'heal_full' || opt.action === 'threat_clear' || opt.action === 'gain_shards') {
+    // 回响之泉：三选一
+    if (opt.action === 'heal_full') {
+      if (typeof playerHP !== 'undefined' && typeof playerMaxHP !== 'undefined') { playerHP = playerMaxHP; if (typeof updatePlayerUI === 'function') updatePlayerUI(); }
+    } else if (opt.action === 'threat_clear') {
+      if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined') threatLevel = THREAT.BASE[difficulty] || 2;
+    } else {
+      if (typeof grantShards === 'function') grantShards(40, W*0.5, H*0.5);
+    }
+    roomDialogueQueue = [{ mode:'plain', text:'（泉水在指尖回响，暖意顺着意识漫开。）' }];
+  }
+  eventMonsterDefeated = true;
+  eventMonsterWaves = 0;
+  roomDialogueIndex = 0;
+  playRoomDialogue();
 }
 
 /** 检测事件房间的怪物是否被击败（支持多波次，帧计数器驱动） */
@@ -980,13 +1463,25 @@ function checkEventMonster() {
       // 启动帧计数过渡（~60帧 ≈ 1秒）
       eventMonsterWavePending = 60;
     } else {
-      // 全部波次完成 → 获得武器
+      // 全部波次完成 → 结算奖励
       eventMonsterDefeated = true;
-      const wpnKeys = Object.keys(EQUIPMENT.weapons).filter(k => k !== 'beginner_brush');
-      const key = wpnKeys[Math.floor(Math.random() * wpnKeys.length)];
-      eventMonsterReward = EQUIPMENT.weapons[key];
       if (typeof battleWords !== 'undefined') battleWords = [];
-      showEquipPrompt('weapon', key, eventMonsterReward);
+      if (eventStormReward) {
+        // 记忆风暴奖励：60 碎片 + 随机遗响
+        eventStormReward = false;
+        if (typeof grantShards === 'function') grantShards(60, W*0.5, H*0.3);
+        const ekey = (typeof rollRandomEcho === 'function') ? rollRandomEcho(null) : null;
+        if (ekey && typeof grantEcho === 'function') grantEcho(ekey);
+        roomDialogueIndex = 0;
+        roomDialogueQueue = [{ mode:'float', speaker:'我', text:'（风暴散去。战利品在掌中凝聚成光。）' }];
+        playRoomDialogue();
+      } else {
+        // 原逻辑：获得武器
+        const wpnKeys = Object.keys(EQUIPMENT.weapons).filter(k => k !== 'beginner_brush');
+        const key = wpnKeys[Math.floor(Math.random() * wpnKeys.length)];
+        eventMonsterReward = EQUIPMENT.weapons[key];
+        showEquipPrompt('weapon', key, eventMonsterReward);
+      }
     }
   }
 }
@@ -1084,6 +1579,10 @@ function startSafeHouseRoom(room) {
       text:'（沉默。零的粒子在微光中轻轻明灭，像渐弱的星光。）' },
     { mode:'whisper', speaker:'零',
       text:'休息吧。等你恢复好了……前方的路还很长。' },
+    { mode:'whisper', speaker:'零',
+      text:'……不过，我给你的锚点已经修好了。' },
+    { mode:'float', speaker:'零',
+      text:'这缕光连着零的领域。只要它还在，无论你沉得多深，都能被拉回来。' },
   ];
   playRoomDialogue();
 }

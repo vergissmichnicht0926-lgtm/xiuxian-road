@@ -359,14 +359,16 @@ function returnToMap(roomId) {
   const room = _getRoomData().find(r => r.id === roomId);
   if (room && room.type === 'safe_house') {
     if (isRoguelikeMap) {
+      // 肉鸽通关：安全屋对话播完 → 弹总结页（结算奖励）→ 回零的领域
       setTimeout(() => {
-        if (typeof enterHub === 'function') enterHub();
-      }, 2000);
+        if (typeof showRunSummary === 'function') showRunSummary(true);
+        else if (typeof enterHub === 'function') enterHub();
+      }, 400);
     } else {
-      // 序章模式：直接触发结局，跳过地图
+      // 序章模式：直接触发结局，跳过地图（加速，不再停留 1.5s）
       setTimeout(() => {
         if (typeof triggerPrologueEnd === 'function') triggerPrologueEnd();
-      }, 1500);
+      }, 400);
     }
     return; // ← 跳过地图显示
   }
@@ -398,8 +400,8 @@ function _currentSegmentIndex() {
 function getActiveRooms() {
   const segIdx = _currentSegmentIndex();
   const seg = dynamicSegments[segIdx];
+  // 只显示当前层段房间（含当前段商店），避免其他段已完成的「市」混入分屏
   return _getRoomData().filter(r => {
-    if (r.isShop) return mapRooms[r.id] && mapRooms[r.id]._active;
     if (!seg) return true;
     return r.layer >= seg.startLayer && r.layer <= seg.endLayer;
   });
@@ -534,7 +536,32 @@ function drawMap(ctx) {
   ctx.fillStyle = 'rgba(150,170,200,0.35)';
   ctx.font = '12px "Noto Serif SC","SimSun",serif'; ctx.textAlign = 'center';
   ctx.fillText('点击发光节点进入', L.W * 0.5, L.H * 0.92);
+
+  // ── 「返回零的领域」按钮（肉鸽地图右上角，主动返回=放弃本局无奖励）──
+  if (typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap) {
+    const r = _mapReturnBtnRect(L.W, L.H);
+    const hover = Math.abs(mx - r.x) < r.w / 2 && Math.abs(my - r.y) < r.h / 2;
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.003);
+    ctx.save();
+    ctx.fillStyle = hover ? `rgba(150,200,255,${0.22 * pulse})` : 'rgba(140,190,240,0.10)';
+    ctx.strokeStyle = hover ? `rgba(180,220,255,${0.7 * pulse})` : 'rgba(140,200,240,0.3)';
+    ctx.lineWidth = hover ? 1.5 : 1;
+    ctx.beginPath();
+    ctx.roundRect(r.x - r.w / 2, r.y - r.h / 2, r.w, r.h, 16);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = hover ? '#ddeeff' : 'rgba(200,220,245,0.75)';
+    ctx.font = '13px "Noto Serif SC","SimSun",serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('返回零的领域', r.x, r.y);
+    ctx.restore();
+  }
   ctx.restore();
+}
+
+/** 「返回零的领域」按钮几何（地图右上角） */
+function _mapReturnBtnRect(W, H) {
+  const w = 170, h = 32;
+  return { x: W - 110, y: 42, w: w, h: h };
 }
 
 function getVisibleNodes() {
@@ -582,6 +609,15 @@ function hitTestMap(mx, my) {
 }
 
 function handleMapClick(mx, my) {
+  // 「返回零的领域」：主动返回 = 放弃本局，无任何奖励（不结算货币/熟练度/图鉴）
+  if (typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap) {
+    const r = _mapReturnBtnRect(typeof W !== 'undefined' ? W : window.innerWidth, typeof H !== 'undefined' ? H : window.innerHeight);
+    if (Math.abs(mx - r.x) < r.w / 2 && Math.abs(my - r.y) < r.h / 2) {
+      if (typeof Sound !== 'undefined' && Sound.uiOpen) Sound.uiOpen();
+      if (typeof enterHub === 'function') enterHub();
+      return;
+    }
+  }
   const room = hitTestMap(mx, my);
   if (room) {
     Sound.mapNode();

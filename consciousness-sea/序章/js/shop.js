@@ -102,7 +102,8 @@ function initShopItems() {
     Object.entries(SHOP_CATALOG.armors).forEach(([key, cost]) => {
       const data = EQUIPMENT.armors[key];
       if (!data) return;
-      const owned = (typeof playerArmor !== 'undefined' && playerArmor && playerArmor.id === key);
+      const owned = (typeof playerArmor !== 'undefined' && playerArmor && playerArmor.id === key)
+        || (typeof unlockedArmors !== 'undefined' && unlockedArmors.has(key));
       if (!owned) available.push({ type:'armor', key, data, cost });
     });
   }
@@ -120,7 +121,8 @@ function initShopItems() {
     Object.entries(SHOP_CATALOG.talismans).forEach(([key, cost]) => {
       const data = EQUIPMENT.talismans[key];
       if (!data) return;
-      const owned = (typeof playerTalisman !== 'undefined' && playerTalisman && playerTalisman.id === key);
+      const owned = (typeof playerTalisman !== 'undefined' && playerTalisman && playerTalisman.id === key)
+        || (typeof unlockedTalismans !== 'undefined' && unlockedTalismans.has(key));
       if (!owned) available.push({ type:'talisman', key, data, cost });
     });
   }
@@ -142,7 +144,22 @@ function initShopItems() {
     consumables.push({ type:'consumable', key:'gamble', ...SHOP_CONSUMABLES.gamble });
   }
 
-  const allItems = [...selectedEquip, ...consumables];
+  // ── 遗响商品（1-2 件未拥有，按稀有度定价）──
+  const echoItems = [];
+  if (typeof ECHO_DEFS !== 'undefined' && typeof echoInventory !== 'undefined') {
+    const echoPool = Object.keys(ECHO_DEFS).filter(k => !echoInventory.includes(k));
+    if (echoPool.length) {
+      const echoCount = Math.random() < 0.5 ? 1 : 2;
+      const echoShuffled = echoPool.sort(() => Math.random() - 0.5);
+      echoShuffled.slice(0, Math.min(echoCount, echoPool.length)).forEach(k => {
+        const ed = ECHO_DEFS[k];
+        const rr = (typeof ECHO_RARITY !== 'undefined' && ECHO_RARITY[ed.rarity]) || ECHO_RARITY.common;
+        echoItems.push({ type:'echo', key:k, data:ed, cost: rr.cost });
+      });
+    }
+  }
+
+  const allItems = [...selectedEquip, ...echoItems, ...consumables];
   const Ww = typeof W !== 'undefined' ? W : 1200;
   const Hh = typeof H !== 'undefined' ? H : 800;
   const cols = Ww < 480 ? 1 : 2; // 窄屏自动降为单列
@@ -287,7 +304,7 @@ function drawShop(ctx) {
     ctx.shadowBlur = 0;
 
     // 类型小标
-    const typeLabel = item.type === 'weapon' ? '武器' : item.type === 'armor' ? '防具' : item.type === 'skill' ? '技能' : item.type === 'talisman' ? '护符' : '消耗';
+    const typeLabel = item.type === 'weapon' ? '武器' : item.type === 'armor' ? '防具' : item.type === 'skill' ? '技能' : item.type === 'talisman' ? '护符' : item.type === 'echo' ? '遗响' : '消耗';
     ctx.fillStyle = 'rgba(200,200,220,0.35)';
     ctx.font = '9px "Noto Serif SC","SimSun",serif';
     ctx.textAlign = 'left';
@@ -305,13 +322,14 @@ function drawShop(ctx) {
     ctx.font = '10px "Noto Serif SC","SimSun",serif';
     ctx.fillText(item.desc || (item.data && item.data.desc) || '', cx, cy + 16);
 
-    // 价格
-    const canAfford = shards >= item.cost;
+    // 价格（含遗响折扣）
+    const price = (typeof getShopPrice === 'function') ? getShopPrice(item) : item.cost;
+    const canAfford = shards >= price;
     const priceColor = isSelected ? '#ffdd88' : (canAfford ? 'rgba(255,220,150,0.7)' : 'rgba(255,100,80,0.7)');
     ctx.fillStyle = priceColor;
     ctx.font = '13px "Noto Serif SC","SimSun",serif';
     ctx.textAlign = 'right';
-    ctx.fillText(`◇ ${item.cost}`, cx + cw/2 - 10, cy - ch/2 + 14);
+    ctx.fillText(`◇ ${price}`, cx + cw/2 - 10, cy - ch/2 + 14);
 
     // 选中提示
     if (isSelected) {
@@ -386,19 +404,32 @@ function handleShopClick() {
   }
 }
 
+/** 遗响·商店折扣：统一取价（市集之忆等可打折） */
+function getShopPrice(item) {
+  const disc = (typeof echoMod === 'function') ? echoMod('shopDiscount') : 0;
+  return Math.max(1, Math.round((item.cost || 0) * (1 - disc)));
+}
+
 /** 执行购买 */
 function attemptPurchase(item) {
-  if (shards < item.cost) {
+  const price = (typeof getShopPrice === 'function') ? getShopPrice(item) : (item.cost || 0);
+  if (shards < price) {
     shopFeedback = { text: '意识碎片不足', color: '#ff6644', timer: 45 };
     shopSelected = null;
     if (typeof Sound !== 'undefined') Sound.stun();
     return;
   }
 
-  shards -= item.cost;
+  shards -= price;
   updateShardsDisplay();
 
-  if (item.type === 'consumable') {
+  if (item.type === 'echo') {
+    // ── 遗响 ──
+    if (typeof grantEcho === 'function') grantEcho(item.key);
+    shopFeedback = { text: `获得了遗响 · ${item.data.name}`, color: '#ffb648', timer: 80 };
+    shopItems = shopItems.filter(si => si !== item);
+    shopSelected = null;
+  } else if (item.type === 'consumable') {
     // ── 消耗品 ──
     if (item.effect === 'heal') {
       if (typeof playerHP !== 'undefined' && typeof playerMaxHP !== 'undefined') {
@@ -429,7 +460,8 @@ function attemptPurchase(item) {
       if (SHOP_CATALOG.armors) {
         Object.entries(SHOP_CATALOG.armors).forEach(([key]) => {
           const data = EQUIPMENT.armors[key];
-          if (data && !(typeof playerArmor !== 'undefined' && playerArmor && playerArmor.id === key)) {
+          if (data && !(typeof playerArmor !== 'undefined' && playerArmor && playerArmor.id === key)
+              && !(typeof unlockedArmors !== 'undefined' && unlockedArmors.has(key))) {
             allEquip.push({ type:'armor', key, data });
           }
         });
@@ -445,7 +477,8 @@ function attemptPurchase(item) {
       if (SHOP_CATALOG.talismans) {
         Object.entries(SHOP_CATALOG.talismans).forEach(([key]) => {
           const data = EQUIPMENT.talismans[key];
-          if (data && !(typeof playerTalisman !== 'undefined' && playerTalisman && playerTalisman.id === key)) {
+          if (data && !(typeof playerTalisman !== 'undefined' && playerTalisman && playerTalisman.id === key)
+              && !(typeof unlockedTalismans !== 'undefined' && unlockedTalismans.has(key))) {
             allEquip.push({ type:'talisman', key, data });
           }
         });
@@ -487,6 +520,10 @@ function attemptPurchase(item) {
 function equipItem(type, key, data) {
   // 图鉴：记录装备获得
   if (typeof registerEquipment === 'function') registerEquipment(key);
+  // 装备获得计数（熟练度/开局池解锁）
+  if ((type === 'weapon' || type === 'armor' || type === 'talisman') && typeof runEquipGains !== 'undefined' && runEquipGains) {
+    runEquipGains[key] = (runEquipGains[key] || 0) + 1;
+  }
 
   if (type === 'weapon') {
     if (typeof unlockedWeapons !== 'undefined') unlockedWeapons.add(key);
@@ -494,7 +531,8 @@ function equipItem(type, key, data) {
   } else if (type === 'armor') {
     if (typeof playerArmor !== 'undefined') {
       playerArmor = data;
-      if (typeof playerDefense !== 'undefined') playerDefense = data.defense || 0;
+      if (typeof unlockedArmors !== 'undefined') unlockedArmors.add(key);
+      if (typeof playerDefense !== 'undefined') playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(data) : (data.defense || 0);
     }
   } else if (type === 'skill') {
     if (typeof playerSkill !== 'undefined') {
@@ -506,6 +544,7 @@ function equipItem(type, key, data) {
     }
   } else if (type === 'talisman') {
     if (typeof playerTalisman !== 'undefined') playerTalisman = data;
+    if (typeof unlockedTalismans !== 'undefined') unlockedTalismans.add(key);
   }
   if (typeof updatePlayerUI === 'function') updatePlayerUI();
 }

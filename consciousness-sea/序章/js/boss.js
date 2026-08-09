@@ -115,6 +115,7 @@ function initBoss(key) {
   if (typeof lastBossKey !== 'undefined') lastBossKey = key; // 记录当前Boss用于重试
   bossActive = true; bossProjectiles = [];
   if (typeof enemyEntity !== 'undefined') enemyEntity = null; // 清除普通敌人实体
+  if (typeof clearEnemyList === 'function') clearEnemyList(); // 清空多敌人编队，防止Boss房渲染普通敌人
   if (typeof Sound !== 'undefined' && Sound.setBGMIntensity) Sound.setBGMIntensity(0.7);
   const cx = W*0.5, cy = H*0.22, cfg = bossConfig;
 
@@ -308,6 +309,8 @@ function updateBoss(dt) {
       if (s._fusionPending) {
         // 假撤退：部件上飘但不清理，等憾冲入合体
         s.left.y -= 0.4; s.right.y -= 0.35;
+      } else if (typeof echoChoicePending !== 'undefined' && echoChoicePending) {
+        // 遗响三选一挂起：等玩家选择后由 resolveBossChoice 一次性清理
       } else if ((s.timer+=dt)>3) {
         bossActive=false; bossState=null; bossProjectiles=[]; restorePlayerWords();
       }
@@ -1189,6 +1192,7 @@ function triggerHanFlee() {
   bossProjectiles = [];
   battleWords = [];
   if (typeof enemyEntity !== 'undefined') enemyEntity = null;
+  if (typeof clearEnemyList === 'function') clearEnemyList(); // 清空多敌人编队
   // 完整清理所有攻击特效状态
   bossState._gravityActive = false; bossState._gravityIntensity = 0;
   bossState._heartLock = null;
@@ -1251,7 +1255,7 @@ function shatterAllEquipment() {
   if (typeof playerWeapon !== 'undefined') playerWeapon = EQUIPMENT.weapons['beginner_brush'];
   if (typeof playerArmor !== 'undefined') {
     playerArmor = EQUIPMENT.armors['thin_silk'];
-    playerDefense = playerArmor.defense || 0;
+    playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : (playerArmor.defense || 0);
   }
   if (typeof playerSkill !== 'undefined') playerSkill = EQUIPMENT.skills['concentration'];
   if (typeof playerTalisman !== 'undefined') playerTalisman = null;
@@ -1280,12 +1284,14 @@ function shatterAllEquipment() {
 }
 
 function defeatBoss() {
+  if (typeof runBossKills !== 'undefined') runBossKills++; // 本局Boss击杀统计
   bossState.phase=BOSS_PHASE.DEFEATED; bossState.timer=0;
   bossProjectiles=[]; battleWords=[];
   // 清理新攻击类型状态
   bossState._afterimages=[]; bossState._burstBombs=[];
   bossState._gravityActive=false; bossState._heartLock=null;
   if(typeof enemyEntity!=='undefined')enemyEntity=null; shakeAmount=16;
+  if (typeof clearEnemyList === 'function') clearEnemyList(); // 清空多敌人编队
   if (typeof lastBossKey !== 'undefined') lastBossKey = null; // Boss已击败，清除重试记录
   if (typeof Sound !== 'undefined' && Sound.setBGMIntensity) Sound.setBGMIntensity(0);
   // 碎片奖励（按Boss区分）
@@ -1311,6 +1317,16 @@ function defeatBoss() {
   const cx=W*0.5,cy=H*0.2;
   for(let i=0;i<100;i++) particles.push(new HitParticle(cx,cy,'#ffcc88','·'));
   Sound.victory();
+
+  // 遗响·三选一：仅第一章肉鸽三 Boss（忆/执/遗憾）触发；憾假撤退、遗融合天然不走此分支
+  if (typeof openEchoChoice === 'function') {
+    const bossKey = bossState ? bossState._bossKey : null;
+    if (bossKey === 'recall' || bossKey === 'obsess' || bossKey === 'regretful') {
+      echoChoicePending = true;
+      const bias = bossKey === 'recall' ? 0 : bossKey === 'obsess' ? 0.08 : 0.15;
+      openEchoChoice(bias);
+    }
+  }
 }
 
 /* ═══════════════ §K 遗憾合体·溯洄 — 剧情演出 ═══════════════
@@ -1581,7 +1597,7 @@ function shatterAllEquipmentSilent() {
   if (typeof playerWeapon !== 'undefined') playerWeapon = EQUIPMENT.weapons['beginner_brush'];
   if (typeof playerArmor !== 'undefined') {
     playerArmor = EQUIPMENT.armors['thin_silk'];
-    playerDefense = playerArmor.defense || 0;
+    playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : (playerArmor.defense || 0);
   }
   if (typeof playerSkill !== 'undefined') playerSkill = EQUIPMENT.skills['concentration'];
   if (typeof playerTalisman !== 'undefined') playerTalisman = null;

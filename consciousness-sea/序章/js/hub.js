@@ -93,9 +93,16 @@ function enterHub() {
   if (typeof bossActive !== 'undefined') bossActive = false;
   if (typeof bossState !== 'undefined') bossState = null;
   if (typeof enemyEntity !== 'undefined') enemyEntity = null;
+  if (typeof clearEnemyList === 'function') clearEnemyList(); // ⚠️ 清空多敌人编队，防重新潜航浮现残留敌人
+  if (typeof enemyProjectiles !== 'undefined') enemyProjectiles = [];
   if (typeof isRoguelikeMap !== 'undefined') isRoguelikeMap = false;
   if (typeof dynamicRoomData !== 'undefined') dynamicRoomData = null;
   if (typeof dynamicBaseConnections !== 'undefined') dynamicBaseConnections = null;
+
+  // ⚠️ 回到零的领域：重置玩家装备为空（下一局潜航由小萤 rollStartGear 随机提供）
+  if (typeof playerWeapon !== 'undefined') playerWeapon = null;
+  if (typeof playerArmor !== 'undefined') { playerArmor = null; playerDefense = 0; }
+  if (typeof playerTalisman !== 'undefined') playerTalisman = null;
 
   // 隐藏战败覆盖层（如果从肉鸽战败进入Hub）
   const defeatOverlay = document.getElementById('defeat-overlay');
@@ -797,13 +804,23 @@ function startRoguelikeDive() {
   if (typeof shards !== 'undefined') shards = 0;
   if (typeof updateShardsDisplay === 'function') updateShardsDisplay();
 
-  // 重置装备为基础装备
-  if (typeof EQUIPMENT !== 'undefined') {
+  // 重置遗响（每局潜航的局内构筑清空）
+  if (typeof clearEchoes === 'function') clearEchoes();
+
+  // 重置局内装备状态（融合等级 equipmentLevels / buff weaponBuffs / 熟练度 equipProficiency 跨局保留）
+  if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合清空
+  if (typeof resetRunStats === 'function') resetRunStats(); // 本局统计 + 装备获得计数
+  // 小萤随机提供装备（从解锁池：基础件+熟练度达标件；技能固有不随机）
+  if (typeof rollStartGear === 'function') {
+    rollStartGear();
+  } else if (typeof EQUIPMENT !== 'undefined') {
     if (typeof playerWeapon !== 'undefined') playerWeapon = EQUIPMENT.weapons['beginner_brush'];
-    if (typeof playerArmor !== 'undefined') { playerArmor = EQUIPMENT.armors['thin_silk']; if (typeof playerDefense !== 'undefined') playerDefense = playerArmor.defense || 0; }
-    if (typeof playerSkill !== 'undefined') playerSkill = EQUIPMENT.skills['concentration'];
+    if (typeof playerArmor !== 'undefined') { playerArmor = EQUIPMENT.armors['thin_silk']; if (typeof playerDefense !== 'undefined') playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : (playerArmor.defense || 0); }
     if (typeof playerTalisman !== 'undefined') playerTalisman = EQUIPMENT.talismans['vitality_charm'];
   }
+  if (typeof playerSkill !== 'undefined') playerSkill = (typeof EQUIPMENT !== 'undefined') ? EQUIPMENT.skills['concentration'] : playerSkill;
+  if (playerArmor && typeof unlockedArmors !== 'undefined') unlockedArmors.add(playerArmor.id);
+  if (playerTalisman && typeof unlockedTalismans !== 'undefined') unlockedTalismans.add(playerTalisman.id);
 
   // 重置技能状态
   if (typeof skillState !== 'undefined') skillState = { collected: [], chargeLevel: 0, ready: false };

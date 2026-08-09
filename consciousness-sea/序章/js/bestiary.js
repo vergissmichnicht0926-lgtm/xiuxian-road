@@ -4,7 +4,7 @@
  *       sound.js (Sound)
  *       main.js (W, H, mx, my)
  *
- * 收录：敌人 / 装备 / 记忆碎片
+ * 收录：敌人 / 装备 / 记忆碎片 / 遗响
  * 数据用 localStorage 持久化（key: consciousness_sea_bestiary）
  * 遇到就自动记录，无需手动操作
  */
@@ -160,7 +160,50 @@ const BESTIARY_MEMORY_DEFS = {
     desc: '遗憾消散时，深海里只剩一片寂静。零站在你身边，很久很久没有说话。最后她说：「走吧。有些遗憾，注定无法弥补。」',
     source: '击败遗憾',
   },
+  // ── 第一章独特事件碎片（一次性）──
+  'unique_name_echo': {
+    id: 'unique_name_echo', name: '名字的回声',
+    desc: '一段语音残片：沙哑的男声叮嘱「记住她的名字，就算你忘了自己是谁」。零的名字就在舌尖，却怎么也抓不住。',
+    source: '第一章 · 记忆碎片',
+  },
+  'unique_beacon': {
+    id: 'unique_beacon', name: '沉锚信标',
+    desc: '废弃的潜航信标在此运转了整整十年，最后一行标注是「她还在下面」。时间戳和你醒来的日子隔了十年。',
+    source: '第一章 · 记忆碎片',
+  },
+  'unique_letter': {
+    id: 'unique_letter', name: '未寄出的信',
+    desc: '一封字迹属于你的信：「如果读到这封信的人是我——那你又忘了一次。别让遗憾把你留在这片海里。」落款只有一个日期。',
+    source: '第一章 · 记忆碎片',
+  },
+  'unique_light': {
+    id: 'unique_light', name: '第十年的光',
+    desc: '零的记忆：在黑暗底部数着日子，一个光点沉下来，又浮上去。她轻声说：再来一次吧，我会等的。',
+    source: '第一章 · 记忆碎片',
+  },
+  'unique_fork': {
+    id: 'unique_fork', name: '歧路',
+    desc: '一块凝固的遗憾。一条路通向海面，一条路通向深海。你无数次站在岔路口，每一次都选了深潜。',
+    source: '第一章 · 记忆碎片',
+  },
+  'unique_return': {
+    id: 'unique_return', name: '归途',
+    desc: '散落的词元拼出你的潜航记录——第1次失忆，第2次失忆，第3次……每一次都重新出发。你从来不是第一次来。',
+    source: '第一章 · 记忆碎片',
+  },
 };
+
+// 遗响图鉴定义（从 ECHO_DEFS 动态生成，单一数据源，避免重复维护）
+const BESTIARY_RELIC_DEFS = {};
+if (typeof ECHO_DEFS !== 'undefined' && typeof ECHO_RARITY !== 'undefined') {
+  Object.entries(ECHO_DEFS).forEach(([key, d]) => {
+    const rr = ECHO_RARITY[d.rarity] || ECHO_RARITY.common;
+    BESTIARY_RELIC_DEFS[key] = {
+      id: key, name: d.name, category: rr.label + '遗响',
+      desc: d.desc, icon: d.icon || '忆', iconColor: rr.color,
+    };
+  });
+}
 
 // ═══════════════ 数据持久化 ═══════════════
 
@@ -179,6 +222,7 @@ function loadBestiary() {
   if (!bestiaryData.enemies) bestiaryData.enemies = {};
   if (!bestiaryData.equipment) bestiaryData.equipment = {};
   if (!bestiaryData.memories) bestiaryData.memories = {};
+  if (!bestiaryData.relics) bestiaryData.relics = {};
 }
 
 function saveBestiary() {
@@ -210,6 +254,16 @@ function registerMemory(memoryId) {
   if (!bestiaryData) loadBestiary();
   if (!bestiaryData.memories[memoryId]) {
     bestiaryData.memories[memoryId] = { discovered: true, timestamp: Date.now() };
+    saveBestiary();
+  }
+}
+
+/** 记录遗响获得 */
+function registerRelic(relicId) {
+  if (!bestiaryData) loadBestiary();
+  if (!bestiaryData.relics) bestiaryData.relics = {};
+  if (!bestiaryData.relics[relicId]) {
+    bestiaryData.relics[relicId] = { discovered: true, timestamp: Date.now() };
     saveBestiary();
   }
 }
@@ -260,6 +314,7 @@ function drawBestiary(ctx) {
     { key: 'enemies', label: '敌人' },
     { key: 'equipment', label: '装备' },
     { key: 'memories', label: '记忆' },
+    { key: 'relics', label: '遗响' },
   ];
   const tabW = 80, tabH = 32, tabGap = 12;
   const tabStartX = W * 0.5 - (tabs.length * tabW + (tabs.length - 1) * tabGap) / 2 + tabW / 2;
@@ -309,6 +364,8 @@ function drawBestiary(ctx) {
     drawBestiaryTab(ctx, BESTIARY_EQUIP_DEFS, bestiaryData.equipment, marginX, contentY, contentW, contentH);
   } else if (bestiaryTab === 'memories') {
     drawBestiaryTab(ctx, BESTIARY_MEMORY_DEFS, bestiaryData.memories, marginX, contentY, contentW, contentH);
+  } else if (bestiaryTab === 'relics') {
+    drawBestiaryTab(ctx, BESTIARY_RELIC_DEFS, bestiaryData.relics, marginX, contentY, contentW, contentH);
   }
 
   ctx.restore();
@@ -318,10 +375,12 @@ function drawBestiary(ctx) {
   let defs;
   if (bestiaryTab === 'enemies') { defs = BESTIARY_ENEMY_DEFS; }
   else if (bestiaryTab === 'equipment') { defs = BESTIARY_EQUIP_DEFS; }
-  else { defs = BESTIARY_MEMORY_DEFS; }
+  else if (bestiaryTab === 'memories') { defs = BESTIARY_MEMORY_DEFS; }
+  else { defs = BESTIARY_RELIC_DEFS; }
   total = Object.keys(defs).length;
   const data = bestiaryTab === 'enemies' ? bestiaryData.enemies :
-    bestiaryTab === 'equipment' ? bestiaryData.equipment : bestiaryData.memories;
+    bestiaryTab === 'equipment' ? bestiaryData.equipment :
+    bestiaryTab === 'memories' ? bestiaryData.memories : bestiaryData.relics;
   discovered = Object.keys(data).filter(k => data[k] && data[k].discovered).length;
 
   ctx.fillStyle = 'rgba(180,200,220,0.3)';
@@ -421,6 +480,7 @@ function handleBestiaryClick(cx, cy) {
     { key: 'enemies', label: '敌人' },
     { key: 'equipment', label: '装备' },
     { key: 'memories', label: '记忆' },
+    { key: 'relics', label: '遗响' },
   ];
   const tabW = 80, tabH = 32, tabGap = 12;
   const tabStartX = W * 0.5 - (tabs.length * tabW + (tabs.length - 1) * tabGap) / 2 + tabW / 2;
@@ -446,7 +506,7 @@ function handleBestiaryClick(cx, cy) {
 }
 
 // 初始化加载（安全包裹，隐私模式下localStorage不可用时静默降级）
-try { loadBestiary(); } catch(e) { bestiaryData = { enemies:{}, equipment:{}, memories:{} }; }
+try { loadBestiary(); } catch(e) { bestiaryData = { enemies:{}, equipment:{}, memories:{}, relics:{} }; }
 
 // 图鉴滚动支持（滚轮 / 触控板）
 window.addEventListener('wheel', e => {

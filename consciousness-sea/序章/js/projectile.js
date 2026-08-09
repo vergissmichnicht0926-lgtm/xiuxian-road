@@ -26,10 +26,14 @@ class Projectile {
     this._waveFreq = 0;  // 摆动频率
     this._wavePhase = 0; // 初始相位
     this._baseX = 0;     // 摆动基准X
+    this._trail = [];    // 拖尾轨迹（表现强化）
   }
 
   update(dt) {
     this.age += dt;
+    // 记录拖尾（保留最近 6 帧位置）
+    this._trail.push({ x: this.x, y: this.y });
+    if (this._trail.length > 6) this._trail.shift();
     this.x += this.vx * dt * 60;
     this.y += this.vy * dt * 60;
     // 正弦摆动
@@ -45,9 +49,31 @@ class Projectile {
 
   draw(ctx) {
     ctx.save();
+    // ── 拖尾（渐隐历史轨迹，强化弹道可见性）──
+    for (let i = 0; i < this._trail.length; i++) {
+      const t = this._trail[i];
+      const trailAlpha = this.alpha * ((i + 1) / (this._trail.length + 1)) * 0.3;
+      if (trailAlpha < 0.02) continue;
+      ctx.globalAlpha = trailAlpha;
+      ctx.fillStyle = this.color;
+      ctx.font = `${this.size * 0.45}px "Noto Serif SC","SimSun",serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(this.char, t.x, t.y);
+    }
+    // ── 径向光晕（脉冲呼吸，收敛不放大）──
+    const pulse = 0.9 + 0.1 * Math.sin(this.phase + this.age * 8);
+    const haloR = this.size * 1.25 * pulse;
+    const halo = ctx.createRadialGradient(this.x, this.y, this.size * 0.15, this.x, this.y, haloR);
+    halo.addColorStop(0, this.color);
+    halo.addColorStop(0.6, this.color);
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = this.alpha * 0.18;
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(this.x, this.y, haloR, 0, Math.PI * 2); ctx.fill();
+    // ── 主体（发光脉冲，阴影收窄）──
     ctx.globalAlpha = this.alpha;
     ctx.shadowColor = this.glow;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = 9 + Math.sin(this.phase + this.age * 8) * 5;
     ctx.fillStyle = this.color;
     ctx.font = `${this.size}px "Noto Serif SC","SimSun",serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

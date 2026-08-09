@@ -53,7 +53,7 @@ for (let i=0;i<6;i++) cursorParticles.push(spawnCursorParticle());
 /** 当前装备 */
 let playerWeapon = EQUIPMENT.weapons['beginner_brush'];
 let playerArmor = EQUIPMENT.armors['thin_silk'];
-playerDefense = playerArmor.defense || 0; // 同步初始防具的减伤值（声明在battle.js）
+playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : (playerArmor.defense || 0); // 同步初始防具减伤（含融合等级）
 let playerSkill = EQUIPMENT.skills['concentration'];
 let playerTalisman = null; // 初始无护符，需在潜航中获取
 
@@ -133,12 +133,18 @@ function toggleBackpack() {
 
 function initBackpackItems() {
   backpackItems = [];
+  // 装备融合等级标签（Lv>1 时显示）
+  const equipLabel = (base, id) => {
+    const lv = (typeof getEquipLevel === 'function') ? getEquipLevel(id) : 1;
+    return lv > 1 ? `${base} Lv.${lv}` : base;
+  };
   const items = [
-    { type:'weapon', data:playerWeapon, label:playerWeapon ? playerWeapon.name : '无', cat:'攻' },
-    { type:'armor',  data:playerArmor, label:playerArmor ? playerArmor.name : '无', cat:'防' },
+    { type:'weapon', data:playerWeapon, label:playerWeapon ? equipLabel(playerWeapon.name, playerWeapon.id) : '无', cat:'攻' },
+    { type:'armor',  data:playerArmor, label:playerArmor ? equipLabel(playerArmor.name, playerArmor.id) : '无', cat:'防' },
     { type:'skill',  data:playerSkill, label:playerSkill ? playerSkill.name : '凝神', cat:'skill' },
-    { type:'talisman', data:playerTalisman, label:playerTalisman ? playerTalisman.name : '无', cat:'符' },
+    { type:'talisman', data:playerTalisman, label:playerTalisman ? equipLabel(playerTalisman.name, playerTalisman.id) : '无', cat:'符' },
     { type:'currency', data:null, label:'', cat:'currency' },
+    { type:'echo', data:null, label: '遗响 ' + (typeof echoInventory!=='undefined' ? echoInventory.length : 0), cat:'echo' },
   ];
   const cx = W*0.5, cy = H*0.45;
   const orbitR = Math.min(W,H)*0.28;
@@ -246,6 +252,8 @@ function drawBackpackItems(ctx) {
       ctx.textAlign = 'center';
       if (isCurrency) {
         ctx.fillText('局外', item.x, item.y+sz*0.85);
+      } else if (item.type === 'echo') {
+        ctx.fillText('遗响', item.x, item.y+sz*0.85);
       } else {
         ctx.fillText(item.cat==='攻'?'武器':item.cat==='防'?'防具':item.cat==='符'?'护符':'技能', item.x, item.y+sz*0.85);
       }
@@ -285,6 +293,51 @@ function drawBackpackItems(ctx) {
           ctx.fillText(`累计: ${sc}`, item.x, item.y + orbitR + 22);
           ctx.restore();
         }
+      } else if (item.type === 'echo') {
+        // 遗响位展开：icon 环绕 + 已收集名称列表
+        const echoes = (typeof echoInventory !== 'undefined' && Array.isArray(echoInventory)) ? echoInventory : [];
+        const orbitR = (50 + echoes.length*3)*item._orbitBurst;
+        echoes.forEach((id, i) => {
+          const d = (typeof ECHO_DEFS !== 'undefined') ? ECHO_DEFS[id] : null;
+          if(!d) return;
+          const rr = (typeof ECHO_RARITY !== 'undefined' && ECHO_RARITY[d.rarity]) || { color:'#ffb648' };
+          const angle = item._orbitAge + (i/echoes.length)*Math.PI*2;
+          const ox = item.x + Math.cos(angle)*orbitR;
+          const oy = item.y + Math.sin(angle)*orbitR*0.7;
+          const flicker = 0.5 + 0.5*Math.sin(item._orbitAge*1.5 + i);
+          ctx.save();
+          ctx.globalAlpha = item.alpha*item._orbitBurst*(0.5+flicker*0.4);
+          ctx.fillStyle = rr.color;
+          ctx.shadowColor = rr.color;
+          ctx.shadowBlur = 4 + flicker*6;
+          ctx.font = '17px "Noto Serif SC","SimSun",serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(d.icon || '忆', ox, oy);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        });
+        if(item._orbitBurst>0.5){
+          ctx.save();
+          ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.6;
+          ctx.textAlign = 'center';
+          const maxShow = 8;
+          const show = echoes.slice(0, maxShow);
+          let ty = item.y + orbitR + 22;
+          show.forEach(id => {
+            const d = (typeof ECHO_DEFS !== 'undefined') ? ECHO_DEFS[id] : null;
+            if(!d) return;
+            const rr = (typeof ECHO_RARITY !== 'undefined' && ECHO_RARITY[d.rarity]) || { color:'#ffb648' };
+            ctx.fillStyle = rr.color;
+            ctx.font = '12px "Noto Serif SC","SimSun",serif';
+            ctx.fillText(`${d.icon||''} ${d.name}`, item.x, ty);
+            ty += 18;
+          });
+          ctx.fillStyle = 'rgba(200,210,230,0.5)';
+          ctx.font = '11px "Noto Serif SC","SimSun",serif';
+          if(echoes.length === 0) ctx.fillText('（尚无遗响）', item.x, ty);
+          else if(echoes.length > maxShow) ctx.fillText(`…等共 ${echoes.length} 枚`, item.x, ty + 2);
+          ctx.restore();
+        }
       } else {
         const chars = cfg ? (cfg.words || cfg.chars || []) : [];
         const orbitR = (50 + chars.length*3)*item._orbitBurst;
@@ -305,7 +358,7 @@ function drawBackpackItems(ctx) {
           ctx.restore();
         });
 
-        // 描述（轨道下方）
+        // 描述（轨道下方）+ 武器buff + 熟练度
         if(item._orbitBurst>0.5 && cfg){
           ctx.save();
           ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.45;
@@ -313,6 +366,24 @@ function drawBackpackItems(ctx) {
           ctx.font = '11px "Noto Serif SC","SimSun",serif';
           ctx.textAlign = 'center';
           ctx.fillText(cfg.desc||'', item.x, item.y + orbitR + 22);
+          let extraLine = 40;
+          // 武器buff（深层掉落词缀）
+          if (item.type === 'weapon' && typeof weaponBuffs !== 'undefined' && weaponBuffs[cfg.id]
+              && typeof WEAPON_BUFFS !== 'undefined' && WEAPON_BUFFS[weaponBuffs[cfg.id]]) {
+            const bd = WEAPON_BUFFS[weaponBuffs[cfg.id]];
+            ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.7;
+            ctx.fillStyle = bd.color || '#ffcc66';
+            ctx.fillText(`【${bd.name}】${bd.desc}`, item.x, item.y + orbitR + 40);
+            extraLine = 58;
+          }
+          // 熟练度（武器/防具/护符，非技能/货币/遗响）
+          if ((item.type === 'weapon' || item.type === 'armor' || item.type === 'talisman') && typeof equipProficiency !== 'undefined') {
+            const prof = equipProficiency[cfg.id] || 0;
+            const thr = (typeof EQUIP_UNLOCK !== 'undefined') ? EQUIP_UNLOCK.THRESHOLD : 5;
+            ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.7;
+            ctx.fillStyle = prof >= thr ? 'rgba(255,220,120,0.85)' : 'rgba(200,210,230,0.5)';
+            ctx.fillText(prof >= thr ? `熟练 ${prof} · 已解锁开局池` : `熟练 ${prof}/${thr}`, item.x, item.y + orbitR + extraLine);
+          }
           ctx.restore();
         }
       }
@@ -395,6 +466,12 @@ function update(dt) {
   if(backpackOpen) {
     updateBackpackItems();
     return; // 背包打开时暂停游戏
+  }
+
+  // 遗响三选一模态（最高优先级，冻结游戏）
+  if (typeof echoChoiceActive !== 'undefined' && echoChoiceActive) {
+    if (typeof updateEchoChoice === 'function') updateEchoChoice(dt);
+    return;
   }
 
   // Hub模式
@@ -595,12 +672,13 @@ function update(dt) {
       document.getElementById('enemy-zone').style.opacity = '0';
     } else {
       document.getElementById('enemy-zone').style.opacity = '1';
-      enemyTimer-=dt;
+      // 多敌人攻击计时（每个存活敌人独立计时器；末尾同步主敌人镜像）
+      if (typeof updateEnemyTimers === 'function') updateEnemyTimers(dt);
+      else { enemyTimer-=dt; if(enemyTimer<=0){enemyTimer=0;enemyAttack();} }
       const timerFill=document.getElementById('enemy-timer-fill');
       timerFill.style.width=`${Math.max(0,(enemyTimer/enemyInterval)*100)}%`;
       if(enemyTimer<1.5) timerFill.classList.add('urgent');
       else timerFill.classList.remove('urgent');
-      if(enemyTimer<=0){enemyTimer=0;enemyAttack();}
 
       // 宝物房间不生成普通战斗文字
       const inTreasureRoom = typeof currentDiveRoom !== 'undefined' && currentDiveRoom && currentDiveRoom.type === 'treasure';
@@ -634,8 +712,14 @@ function update(dt) {
       if (bossActive && typeof damageBoss === 'function') {
         // Boss战：走damageBoss，复用20%逃跑/假撤退阈值与defeat判定（灼烧也能击杀Boss）
         if (bossState && bossState.hp > 0) damageBoss(blazeDmg, 1);
-      } else if (enemyHP > 0) {
-        enemyHP = Math.max(0, enemyHP - blazeDmg);
+      } else if (typeof enemyList !== 'undefined' && enemyList.some(e => e.alive)) {
+        // 多敌人：灼烧全体存活敌人
+        for (const e of enemyList) {
+          if (!e.alive) continue;
+          e.hp = Math.max(0, e.hp - blazeDmg);
+          if (e.hp <= 0) e.alive = false;
+        }
+        if (typeof syncEnemyCompat === 'function') syncEnemyCompat();
         updateEnemyUI();
       }
       // 灼烧粒子
@@ -872,8 +956,8 @@ function draw() {
   }
 
   if(!backpackOpen){
-    // 敌人实体（先于文字绘制，在文字下方）
-    if (!bossActive && typeof enemyEntity !== 'undefined' && enemyEntity) {
+    // 敌人编队（先于文字绘制，在文字下方）
+    if (!bossActive && typeof enemyList !== 'undefined' && enemyList.length > 0) {
       drawEnemyEntity(ctx);
     }
     // 普通敌人弹幕（绘制在战场文字下方）
@@ -987,6 +1071,9 @@ function draw() {
   if (typeof drawEventOptions === 'function') drawEventOptions(ctx);
   if (typeof drawEquipPrompt === 'function') drawEquipPrompt(ctx);
 
+  // 遗响三选一（最顶层 UI 覆盖层）
+  if (typeof echoChoiceActive !== 'undefined' && echoChoiceActive && typeof drawEchoChoice === 'function') drawEchoChoice(ctx);
+
   // Glitch扫描线
   if(Cinematic.glitch.active){
     const i=Cinematic.glitch.intensity*(Cinematic.glitch.timer/0.4);
@@ -1022,6 +1109,13 @@ canvas.addEventListener('mousemove',e=>{
     my = (e.clientY - H/2)/canvasZoom + H/2;
   } else {
     mx=e.clientX;my=e.clientY;
+  }
+
+  // 遗响三选一悬停
+  if (typeof echoChoiceActive !== 'undefined' && echoChoiceActive && typeof hitTestEchoChoice === 'function') {
+    const hit = hitTestEchoChoice(mx, my);
+    canvas.style.cursor = hit ? 'pointer' : 'default';
+    return;
   }
 
   // 事件选择肢悬停
@@ -1117,6 +1211,13 @@ canvas.addEventListener('click',e=>{
   if(pouchEl){
     const pr = pouchEl.getBoundingClientRect();
     if(cx >= pr.left && cx <= pr.right && cy >= pr.top && cy <= pr.bottom) return;
+  }
+
+  // 遗响三选一（最高优先级模态，点空白无响应；ESC 放弃）
+  if (typeof echoChoiceActive !== 'undefined' && echoChoiceActive) {
+    const card = typeof hitTestEchoChoice === 'function' ? hitTestEchoChoice(cx, cy) : null;
+    if (card && typeof clickEchoChoice === 'function') clickEchoChoice(card);
+    return;
   }
 
   // 事件选择肢
@@ -1217,6 +1318,8 @@ canvas.addEventListener('click',e=>{
         return;
       }
     }
+    // 未命中任何词元 → 尝试点击敌人切换索敌（多敌人编队）
+    if (typeof switchTargetFromClick === 'function' && switchTargetFromClick(cx, cy)) return;
   }
 });
 
@@ -1242,6 +1345,12 @@ canvas.addEventListener('touchmove',e=>{e.preventDefault();
 
 // 键盘快捷键
 window.addEventListener('keydown', e => {
+  // 遗响三选一模态：只响应 ESC 放弃，拦截其余按键
+  if (typeof echoChoiceActive !== 'undefined' && echoChoiceActive) {
+    e.preventDefault();
+    if (e.key === 'Escape' && typeof resolveBossChoice === 'function') resolveBossChoice();
+    return;
+  }
   // Tab：切换背包（先关闭商店）
   if(e.key === 'Tab'){
     e.preventDefault();
@@ -1305,6 +1414,7 @@ function saveGame() {
     soulCrystals: typeof soulCrystals !== 'undefined' ? soulCrystals : 0,
     permanentUpgrades: typeof permanentUpgrades !== 'undefined' ? permanentUpgrades : {},
     affection: Tutorial.affection,
+    uniqueEventsDone: typeof uniqueEventsDone !== 'undefined' ? uniqueEventsDone.slice() : [],
 
     // ── 游戏位置 ⭐ ──
     prologuePhase: prologuePhase,
@@ -1322,6 +1432,12 @@ function saveGame() {
     skillId: playerSkill ? playerSkill.id : 'concentration',
     talismanId: playerTalisman ? playerTalisman.id : null,
 
+    // ── 装备强化（融合等级 + 武器buff，跨局持久化；unlockedArmors/Talismans 为局内不存）──
+    equipmentLevels: typeof equipmentLevels !== 'undefined' ? equipmentLevels : {},
+    weaponBuffs: typeof weaponBuffs !== 'undefined' ? weaponBuffs : {},
+    // ── 装备熟练度（开局随机池解锁进度，跨局持久化）──
+    equipProficiency: typeof equipProficiency !== 'undefined' ? equipProficiency : {},
+
     // ── 玩家状态 ──
     playerHP: typeof playerHP !== 'undefined' ? playerHP : 100,
     playerMaxHP: typeof playerMaxHP !== 'undefined' ? playerMaxHP : 100,
@@ -1330,6 +1446,7 @@ function saveGame() {
     threatLevel: typeof threatLevel !== 'undefined' ? threatLevel : 0,
     nextAttackBoost: typeof nextAttackBoost !== 'undefined' ? nextAttackBoost : false,
     skillState: typeof skillState !== 'undefined' ? skillState : { collected:[], chargeLevel:0, ready:false },
+    echoes: (typeof echoInventory !== 'undefined' ? echoInventory : []).slice(),
 
     // ── 地图状态（DIVING阶段时保存）──
     mapRooms: prologuePhase >= PROLOGUE.DIVING ? _serializeMapRooms() : null,
@@ -1417,10 +1534,16 @@ function resumeFromSave(save) {
   // ── 恢复永久数据 ──
   difficulty = save.difficulty || 1;
   if (save.unlockedWeapons) unlockedWeapons = new Set(save.unlockedWeapons);
+  // 装备强化（融合等级 + 武器buff）；旧档缺失默认空，向前兼容
+  if (typeof save.equipmentLevels !== 'undefined' && typeof equipmentLevels !== 'undefined') equipmentLevels = save.equipmentLevels;
+  if (typeof save.weaponBuffs !== 'undefined' && typeof weaponBuffs !== 'undefined') weaponBuffs = save.weaponBuffs;
+  if (typeof save.equipProficiency !== 'undefined' && typeof equipProficiency !== 'undefined') equipProficiency = save.equipProficiency;
+  if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合（每局重置）
   if (typeof save.threatLevel !== 'undefined' && typeof threatLevel !== 'undefined') threatLevel = save.threatLevel;
   if (typeof save.soulCrystals !== 'undefined' && typeof soulCrystals !== 'undefined') soulCrystals = save.soulCrystals;
   if (typeof save.permanentUpgrades !== 'undefined' && typeof initPermanentUpgrades === 'function') initPermanentUpgrades(save.permanentUpgrades);
   if (typeof save.affection !== 'undefined') Tutorial.affection = save.affection;
+  if (Array.isArray(save.uniqueEventsDone) && typeof uniqueEventsDone !== 'undefined') uniqueEventsDone = save.uniqueEventsDone;
 
   // ── 基础初始化 ──
   Dialogue.init();
@@ -1436,6 +1559,12 @@ function resumeFromSave(save) {
 
   // ── 恢复装备 ──
   _restoreEquipment(save);
+
+  // ── 恢复遗响（局内构筑；旧档无字段默认空，不重算 hpMaxCost 等 grant 代价）──
+  if (typeof clearEchoes === 'function') clearEchoes();
+  if (Array.isArray(save.echoes) && typeof ECHO_DEFS !== 'undefined') {
+    echoInventory = save.echoes.filter(k => ECHO_DEFS[k]);
+  }
 
   // ── 恢复玩家状态 ──
   playerHP = save.playerHP || 100;
@@ -1539,13 +1668,13 @@ function _restoreEquipment(save) {
   // 防具
   if (save.armorId && EQUIPMENT.armors[save.armorId]) {
     playerArmor = EQUIPMENT.armors[save.armorId];
-    playerDefense = (playerArmor && playerArmor.defense) || 0;
+    playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : ((playerArmor && playerArmor.defense) || 0);
   } else if (save.armorId === null) {
     playerArmor = null;
     playerDefense = 0;
   } else {
     playerArmor = EQUIPMENT.armors['thin_silk'];
-    playerDefense = (playerArmor && playerArmor.defense) || 0;
+    playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : ((playerArmor && playerArmor.defense) || 0);
   }
   // 技能（固有，始终有默认值）
   if (save.skillId && EQUIPMENT.skills[save.skillId]) {
@@ -1556,6 +1685,9 @@ function _restoreEquipment(save) {
   // 护符
   playerTalisman = (save.talismanId && EQUIPMENT.talismans[save.talismanId])
     ? EQUIPMENT.talismans[save.talismanId] : null;
+  // 当前装备注册进局内解锁集合（供融合判定 isOwned）
+  if (playerArmor && typeof unlockedArmors !== 'undefined') unlockedArmors.add(playerArmor.id);
+  if (playerTalisman && typeof unlockedTalismans !== 'undefined') unlockedTalismans.add(playerTalisman.id);
 }
 
 /** 恢复到地图潜航阶段 */
@@ -1707,11 +1839,11 @@ function transitionToHub() {
   dynamicRoomData = null;
   dynamicBaseConnections = null;
 
-  // 延迟一下再进入Hub
+  // 延迟一下再进入Hub（加速：600→300ms）
   setTimeout(() => {
     if (typeof enterHub === 'function') enterHub();
     _transitioningToHub = false;
-  }, 600);
+  }, 300);
 }
 
 // ── 章节开头卡片 ──
@@ -1726,7 +1858,7 @@ function showChapterCard(title, subtitle, hint, onclick) {
   overlay.onclick = (e) => {
     if(e.target.closest('.ending-btn')) return; // 不拦截按钮点击
     overlay.style.opacity = '0';
-    setTimeout(()=>{ overlay.classList.remove('show'); overlay.onclick=null; onclick(); }, 600);
+    setTimeout(()=>{ overlay.classList.remove('show'); overlay.onclick=null; onclick(); }, 300);
   };
 }
 
@@ -1747,6 +1879,13 @@ function startPrologue() {
   if (typeof updateShardsDisplay === 'function') updateShardsDisplay();
   if (typeof soulCrystals !== 'undefined') soulCrystals = 0;
   if (typeof permanentUpgrades !== 'undefined') permanentUpgrades = {};
+  if (typeof clearEchoes === 'function') clearEchoes(); // 新档重置遗响
+  if (typeof equipmentLevels !== 'undefined') equipmentLevels = {}; // 新档重置融合等级
+  if (typeof weaponBuffs !== 'undefined') weaponBuffs = {};          // 新档重置武器buff
+  if (typeof equipProficiency !== 'undefined') equipProficiency = {}; // 新档重置装备熟练度
+  if (typeof resetRunStats === 'function') resetRunStats();          // 新档重置本局统计
+  uniqueEventsDone = []; // 新档重置独特事件标记
+  if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合
   // 应用永久升级（新游戏时为空，无效果）
   if (typeof applyPermanentUpgrades === 'function') applyPermanentUpgrades();
   // 初始化序章流程状态
@@ -1760,9 +1899,11 @@ function startPrologue() {
   // 初始化默认装备
   playerWeapon = EQUIPMENT.weapons['beginner_brush'];
   playerArmor = EQUIPMENT.armors['thin_silk'];
-  playerDefense = (playerArmor && playerArmor.defense) || 0;
+  playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : ((playerArmor && playerArmor.defense) || 0);
   playerSkill = EQUIPMENT.skills['concentration'];
   playerTalisman = EQUIPMENT.talismans['vitality_charm']; // 初始护符：回春符
+  if (playerArmor && typeof unlockedArmors !== 'undefined') unlockedArmors.add(playerArmor.id);
+  if (playerTalisman && typeof unlockedTalismans !== 'undefined') unlockedTalismans.add(playerTalisman.id);
   skillState = { collected:[], chargeLevel:0, ready:false };
   updateSkillUI();
   setTimeout(()=>{
@@ -1774,6 +1915,57 @@ function startPrologue() {
 }
 
 // ── 战败画面 ──
+/** 肉鸽潜航总结页（死亡/通关共用）：结算奖励 + 展示统计 → 返回零的领域 */
+function showRunSummary(victory) {
+  canvas.style.cursor = 'default';
+  if (typeof Sound !== 'undefined' && Sound.stopBGM) Sound.stopBGM(1.5);
+
+  // ── 结算（仅死亡/通关；主动返回不调本函数）──
+  let soulReward = 0;
+  if (victory) {
+    // 通关：熟练度 + 货币（按战绩加成）
+    soulReward = (typeof RUN_REWARDS !== 'undefined')
+      ? RUN_REWARDS.CLEAR_BASE + (maxLayerReached || 1) * RUN_REWARDS.PER_LAYER
+        + (runEliteKills || 0) * RUN_REWARDS.PER_ELITE + (runBossKills || 0) * RUN_REWARDS.PER_BOSS
+      : 10;
+    if (typeof soulCrystals !== 'undefined') soulCrystals += soulReward;
+    if (typeof settleEquipGains === 'function') settleEquipGains(); // 本局装备熟练度入账
+  } else {
+    // 死亡：只给货币，熟练度作废
+    soulReward = (typeof RUN_REWARDS !== 'undefined')
+      ? RUN_REWARDS.DEATH_BASE + (runEliteKills || 0) * RUN_REWARDS.PER_ELITE_DEATH
+      : 5;
+    if (typeof soulCrystals !== 'undefined') soulCrystals += soulReward;
+  }
+  if (typeof saveGame === 'function') saveGame();
+
+  // ── 填充 UI ──
+  const overlay = document.getElementById('defeat-overlay');
+  overlay.classList.add('show');
+  document.getElementById('defeat-title').textContent = victory ? '潜航完成' : '意识崩解';
+  document.getElementById('defeat-sub').textContent = victory
+    ? '锚点将你安全送回零的领域。'
+    : '锚点感知到你的濒危，将你拉了回来。';
+  const statsEl = document.getElementById('defeat-stats');
+  if (statsEl) {
+    const wname = (typeof playerWeapon !== 'undefined' && playerWeapon) ? playerWeapon.name : '—';
+    statsEl.innerHTML =
+      `抵达深度 ${maxLayerReached || 1} 层 · 击败敌人 ${runKills || 0} · 精英 ${runEliteKills || 0} · Boss ${runBossKills || 0}<br>` +
+      `意识碎片 ${typeof shards !== 'undefined' ? shards : 0} · 遗响 ${(typeof echoInventory !== 'undefined' && echoInventory) ? echoInventory.length : 0} 枚 · 武器 ${wname}<br>` +
+      `<span style="color:#ffdd88;">灵魂结晶 +${soulReward}</span>`;
+  }
+  const btnsDiv = document.getElementById('defeat-btns');
+  if (btnsDiv) {
+    btnsDiv.innerHTML = `<div class="ending-btn" onclick="enterHub()">返回零的领域</div>`;
+  }
+
+  // 隐藏战斗UI
+  document.getElementById('enemy-zone').style.opacity = '0';
+  document.getElementById('combo-display').classList.remove('show');
+  document.getElementById('skill-display').style.opacity = '0';
+  document.getElementById('stage-hint').style.opacity = '0';
+}
+
 function showDefeat() {
   canvas.style.cursor = 'default'; // 恢复系统光标以便点击按钮
   // BGM: 战败渐弱
@@ -1816,7 +2008,7 @@ function restartFromDefeat() {
 
   // 重置玩家状态
   playerHP = playerMaxHP = 100;
-  playerDefense = (playerArmor && playerArmor.defense) || 0;
+  playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : ((playerArmor && playerArmor.defense) || 0);
   hasShield = false; shieldHP = 0;
   updatePlayerUI();
   document.getElementById('player-zone').style.opacity = '1';

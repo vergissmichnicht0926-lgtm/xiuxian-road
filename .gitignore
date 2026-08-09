@@ -12,3 +12,9 @@ output-styles/
 
 # Claude 本地权限配置（个人，不共享）
 .claude/settings.local.json
+
+# 视觉模型 API key（本地，不入库）
+.vision-env.json
+
+# 本地临时截图/素材（不入库）
+test/

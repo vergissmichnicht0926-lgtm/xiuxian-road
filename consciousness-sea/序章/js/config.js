@@ -25,22 +25,42 @@ const EQUIPMENT = {
     'beginner_brush': {
       id:'beginner_brush', name:'初学者之笔',
       words:['斩','破','裂','刺','断'], color:'#ff6644', glow:'#cc3311',
-      damage:8, wordCount:5, desc:'UCRB标准配发的词元笔，攻字5枚，稳定均衡。'
+      damage:8, wordCount:5, targetMode:'single', desc:'UCRB标准配发的词元笔，攻字5枚，稳定均衡。'
     },
     'star_shatter': {
       id:'star_shatter', name:'碎星之刃',
-      words:['灭','碎','崩'], color:'#ff8866', glow:'#dd4422',
-      damage:12, wordCount:4, desc:'攻字仅4枚，但一击碎星——重锤低速高伤。'
+      words:['灭','碎','崩','陨'], color:'#ff8866', glow:'#dd4422',
+      damage:12, wordCount:4, targetMode:'single', desc:'攻字仅4枚，但一击碎星——重锤低速高伤。'
     },
     'blaze_heaven': {
       id:'blaze_heaven', name:'焚天',
       words:['焚','爆','燃','灼','炎','烧','焰'], color:'#ff7744', glow:'#ee5522',
-      damage:5, wordCount:7, blaze:true, desc:'攻字7枚满屏烈焰，低伤高频，「炎」debuff灼烧。'
+      damage:5, wordCount:7, blaze:true, targetMode:'single', desc:'攻字7枚满屏烈焰，低伤高频，「炎」debuff灼烧。'
     },
     'frost_verse': {
       id:'frost_verse', name:'霜序',
       words:['刺','穿','凝','碎','寒','封'], color:'#99ccff', glow:'#4488bb',
-      damage:7, wordCount:6, slow:true, desc:'攻字6枚凝寒而生，附带减速，控场致胜。'
+      damage:7, wordCount:6, slow:true, targetMode:'single', desc:'攻字6枚凝寒而生，附带减速，控场致胜。'
+    },
+    'thunder_strike': {
+      id:'thunder_strike', name:'惊雷',
+      words:['雷','霆','震','轰','电','霹'], color:'#ffdd44', glow:'#bbaa22',
+      damage:6, wordCount:6, targetMode:'aoe', desc:'攻字6枚牵动天雷——AOE武器，伤害倾泻至场上所有敌人。'
+    },
+    'pierce_lance': {
+      id:'pierce_lance', name:'贯日',
+      words:['贯','穿','透','锥'], color:'#ffaa88', glow:'#dd5522',
+      damage:10, wordCount:4, targetMode:'single', pierce:true, desc:'攻字4枚，一击贯穿——无视护壁型敌人的减伤。'
+    },
+    'blood_eater': {
+      id:'blood_eater', name:'饮血',
+      words:['饮','血','噬','啜','汲'], color:'#ee6677', glow:'#bb2233',
+      damage:7, wordCount:5, targetMode:'single', leech:0.15, desc:'攻字5枚吸血而生，命中回复15%伤害。'
+    },
+    'void_blade': {
+      id:'void_blade', name:'玄夜',
+      words:['玄','夜','遁','潜','隐'], color:'#aa99ff', glow:'#6655cc',
+      damage:9, wordCount:5, targetMode:'single', focus:true, desc:'攻字5枚夜色暗涌，连续命中同一敌人伤害递增。'
     }
   },
   // ── 防具：words=词元池, wordCount=战场上限, defense=减伤, shieldPerWord=每字盾量, maxShield=盾量上限 ──
@@ -62,6 +82,18 @@ const EQUIPMENT = {
       words:['闪','护','避'], color:'#88ccff', glow:'#4488cc',
       defense:2, shieldPerWord:2, maxShield:8, wordCount:3, dodgeChance:0.20,
       desc:'防字3枚如流光掠影，减伤2，每字2盾，上限8，20%概率完全闪避。'
+    },
+    'iron_oath': {
+      id:'iron_oath', name:'铁誓',
+      words:['誓','钢'], color:'#99aabb', glow:'#556677',
+      defense:3, shieldPerWord:5, maxShield:22, wordCount:2,
+      desc:'防字2枚，一诺千钧——减伤3，每字5盾，上限22。厚重如山。'
+    },
+    'moon_shroud': {
+      id:'moon_shroud', name:'月隐',
+      words:['隐','纱','幕'], color:'#ccbbff', glow:'#7766bb',
+      defense:2, shieldPerWord:4, maxShield:18, wordCount:3,
+      desc:'防字3枚如月色轻纱——减伤2，每字4盾，上限18，攻守均衡。'
     }
   },
   skills: {
@@ -82,6 +114,18 @@ const EQUIPMENT = {
       chars:['e','x'], color:'#ffdd44', glow:'#ccaa22',
       type:'charge', effect:'chargedBurst',
       desc:'不断收集ex充能，由你决定何时释放。充能越高伤害越大。'
+    },
+    'last_resort': {
+      id:'last_resort', name:'背水',
+      chars:['背','水'], color:'#dd8899', glow:'#aa4455',
+      type:'sequence', effect:'nextAttackBoost',
+      desc:'背水一战，凝聚心神——下一次攻击威力倍增。'
+    },
+    'thunder_charge': {
+      id:'thunder_charge', name:'雷充',
+      chars:['雷','充'], color:'#ffcc44', glow:'#ccaa22',
+      type:'charge', effect:'chargedBurst',
+      desc:'汇聚雷元素充能，由你决定何时释放。充能越高伤害越大。'
     }
   },
   // ── 护符：取代愈字，words=符字池, wordCount=战场数量, healMin/Max=点击回复量 ──
@@ -104,7 +148,58 @@ const EQUIPMENT = {
       wordCount:1, healMin:3, healMax:5, shieldOnHeal:3,
       desc:'符字×1，回复3~5点并附加3点护盾。攻守兼备。'
     },
+    'serenity_charm': {
+      id:'serenity_charm', name:'静心符',
+      words:['静','心'], color:'#88ddcc', glow:'#448877',
+      wordCount:2, healMin:5, healMax:8, shieldOnHeal:2,
+      desc:'符字×2，回复5~8点并附加2点护盾。稳定安神。'
+    },
+    'storm_charm': {
+      id:'storm_charm', name:'潮汐符',
+      words:['潮','汐'], color:'#66bbee', glow:'#2266aa',
+      wordCount:1, healMin:8, healMax:12,
+      desc:'符字×1，潮汐般的回复8~12点。中量低频。'
+    },
   }
+};
+
+// ═══════════════ 装备融合配置 ═══════════════
+// 拾取已拥有的装备时可选择融合，成功则装备等级+1（数值按 PER_LEVEL_MULT 提升）
+// ⚠️ 命名用 EQUIP_FUSION 避免与 boss.js 的融合演出状态机 FUSION 冲突
+const EQUIP_FUSION = {
+  BASE_SUCCESS: 0.45,      // 基础成功率（可被局外升级 fusionLuck 提高）
+  PER_LEVEL_MULT: 0.25,    // 每级数值提升比例（lv2 = ×1.25）
+  MAX_LEVEL: 5,            // 最高融合等级
+};
+
+// ═══════════════ 装备熟练度 / 开局随机池 ═══════════════
+// 肉鸽中获得装备计熟练度，达到阈值解锁进开局随机池（小萤出发前随机给装备）
+const EQUIP_UNLOCK = {
+  THRESHOLD: 5,            // 获得该装备几次后解锁进开局随机池
+};
+
+// ═══════════════ 潜航结算奖励（肉鸽总结页） ═══════════════
+// 通关：CLEAR_BASE + 层数×PER_LAYER + 精英×PER_ELITE + Boss×PER_BOSS
+// 死亡：DEATH_BASE + 精英×PER_ELITE_DEATH（只给货币，不加熟练度）
+const RUN_REWARDS = {
+  CLEAR_BASE: 10,          // 通关基础灵魂结晶
+  DEATH_BASE: 5,           // 死亡基础灵魂结晶
+  PER_LAYER: 1,            // 每抵达一层 +1
+  PER_ELITE: 3,            // 每击败一个精英 +3（通关）
+  PER_ELITE_DEATH: 2,      // 每击败一个精英 +2（死亡）
+  PER_BOSS: 10,            // 每击败一个 Boss +10
+};
+
+// ═══════════════ 武器 Buff 池 ═══════════════
+// 深层（遗憾段）掉落的武器有概率天生携带 1 个随机 buff，绑定 weaponBuffs[weaponId]。
+// 融合只升数值、不产生 buff（解耦）。全部配合多敌人战斗。
+const WEAPON_BUFFS = {
+  chain:   { name:'连锁',  desc:'单伤命中时对其他敌人溅射30%伤害',  color:'#88ddff' },
+  pierce:  { name:'穿透',  desc:'无视护壁型敌人50%减伤',            color:'#ffaa88' },
+  execute: { name:'处刑',  desc:'对20%血以下敌人伤害翻倍',          color:'#ff6666' },
+  leech:   { name:'汲取',  desc:'伤害的15%转化为回复',              color:'#66ffaa' },
+  focus:   { name:'专注',  desc:'连续命中同一目标伤害递增(最多5层)', color:'#ffcc66' },
+  tempest: { name:'风暴',  desc:'AOE命中时伤害提升30%',             color:'#88ccff' },
 };
 
 // 干扰虚词
@@ -166,19 +261,29 @@ const SHOP_CATALOG = {
     'star_shatter': 150,
     'blaze_heaven': 200,
     'frost_verse': 180,
+    'thunder_strike': 210,
+    'pierce_lance': 170,
+    'blood_eater': 190,
+    'void_blade': 200,
   },
   armors: {
     'mind_wall': 120,
     'light_veil': 150,
+    'iron_oath': 130,
+    'moon_shroud': 140,
   },
   skills: {
     'time_freeze': 100,
     'excalibur': 130,
+    'last_resort': 110,
+    'thunder_charge': 120,
   },
   talismans: {
     'vitality_charm': 100,
     'nectar_charm': 150,
     'ward_charm': 120,
+    'serenity_charm': 110,
+    'storm_charm': 130,
   },
 };
 
@@ -210,6 +315,10 @@ const PERMANENT_UPGRADES = {
   comboBoost: {
     name:'连击强化', desc:'连击倍率额外 +0.2', cost:50, maxLevel:2,
     icon:'×',
+  },
+  fusionLuck: {
+    name:'融合之缘', desc:'装备融合成功率 +10%/级', cost:50, maxLevel:3,
+    icon:'✦',
   },
 };
 
@@ -290,16 +399,16 @@ const ROGUELIKE_ROOM_POOL = {
   combat: [
     { id:'rc1', type:'combat', label:'残响碎片', enemyType:'bash', waves:3, enemyHP:40, enemyInterval:5.0, enemyDmgMult:1.2, hardMode:false,
       desc:'被遗弃的记忆碎片化作了噪点。会周期性地冲撞你的意识。' },
-    { id:'rc2', type:'combat', label:'齐射噪点', enemyType:'volley', waves:3, enemyHP:48, enemyInterval:5.5, enemyDmgMult:1.4, hardMode:false,
-      desc:'朝你齐射意识弹幕。躲开弹道，同时清理战场词元。' },
-    { id:'rc3', type:'combat', label:'雨幕噪点', enemyType:'rain', waves:2, enemyHP:58, enemyInterval:4.5, enemyDmgMult:1.4, hardMode:false,
+    { id:'rc2', type:'combat', label:'齐射噪点', enemyType:'volley', waves:3, enemyHP:48, enemyInterval:6.0, enemyDmgMult:1.4, hardMode:false,
+      desc:'朝你齐射大量意识弹幕。一波很多发，但蓄力较慢。' },
+    { id:'rc3', type:'combat', label:'雨幕噪点', enemyType:'rain', waves:2, enemyHP:58, enemyInterval:4.8, enemyDmgMult:1.4, hardMode:false,
       desc:'降下漫天意识之雨。弹幕无死角，考验走位。' },
-    { id:'rc4', type:'combat', label:'追踪残响', enemyType:'track', waves:2, enemyHP:64, enemyInterval:4.0, enemyDmgMult:1.8, hardMode:true,
-      desc:'发射追踪弹。它不会停下，直到追上你的光标。' },
+    { id:'rc4', type:'combat', label:'追踪残响', enemyType:'track', waves:2, enemyHP:64, enemyInterval:2.8, enemyDmgMult:1.8, hardMode:true,
+      desc:'只发一颗追踪弹，但它蓄力极快，不会停下，直到追上你的光标。' },
     { id:'rc5', type:'combat', label:'护壁残响', enemyType:'shield', waves:2, enemyHP:74, enemyInterval:3.8, enemyDmgMult:1.6, hardMode:true,
       desc:'外层有一层意识护壁，直接攻击伤害减半。先破壁再破心。' },
-    { id:'rc6', type:'combat', label:'分裂残响', enemyType:'split', waves:2, enemyHP:52, enemyInterval:5.0, enemyDmgMult:1.2, hardMode:false,
-      desc:'击败它时，残片会分裂成两个更小的噪点。' },
+    { id:'rc6', type:'combat', label:'分裂残响', enemyType:'split', waves:3, enemyHP:52, enemyInterval:5.0, enemyDmgMult:1.0, hardMode:false,
+      desc:'分裂的噪点群：第一轮1个，第二轮2个，第三轮4个——每一轮都更小更弱，但数量翻倍。' },
   ],
   event: [
     { id:'re1', type:'event', label:'记忆涟漪', desc:'前方有不稳定的意识波动……无法判断里面有什么。' },
