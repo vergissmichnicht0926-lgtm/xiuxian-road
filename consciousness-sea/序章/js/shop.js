@@ -132,13 +132,20 @@ function initShopItems() {
   const shuffled = available.sort(() => Math.random() - 0.5);
   const selectedEquip = shuffled.slice(0, Math.min(equipCount, shuffled.length));
 
+  // ── 工坊「传承共鸣」：概率上架传承技能（初始0%，每级+5%，只卖未拥有）──
+  if (typeof getInheritShopChance === 'function' && Math.random() < getInheritShopChance()) {
+    const inheritPool = (typeof INHERIT_SKILL_IDS !== 'undefined' ? INHERIT_SKILL_IDS : [])
+      .filter(k => EQUIPMENT.skills[k] && !(playerSkill && playerSkill.id === k));
+    if (inheritPool.length) {
+      const key = inheritPool[Math.floor(Math.random() * inheritPool.length)];
+      selectedEquip.push({ type:'skill', key, data: EQUIPMENT.skills[key], cost: 300 });
+    }
+  }
+
   // ── 固定消耗品（始终出现）──
   const consumables = [];
   if (SHOP_CONSUMABLES.heal) {
     consumables.push({ type:'consumable', key:'heal', ...SHOP_CONSUMABLES.heal });
-  }
-  if (SHOP_CONSUMABLES.purify) {
-    consumables.push({ type:'consumable', key:'purify', ...SHOP_CONSUMABLES.purify });
   }
   if (SHOP_CONSUMABLES.gamble) {
     consumables.push({ type:'consumable', key:'gamble', ...SHOP_CONSUMABLES.gamble });
@@ -438,57 +445,27 @@ function attemptPurchase(item) {
       }
       shopFeedback = { text: `回复了 ${item.value || 40} 点意识完整度`, color: '#44dd88', timer: 60 };
       if (typeof Sound !== 'undefined') Sound.heal();
-    } else if (item.effect === 'purify') {
-      // 清除所有干扰字
-      if (typeof battleWords !== 'undefined') {
-        battleWords = battleWords.filter(bw => bw.cat !== '乱');
-      }
-      shopFeedback = { text: '干扰字已被清除', color: '#88ccff', timer: 60 };
-      if (typeof Sound !== 'undefined') Sound.boost();
     } else if (item.effect === 'gamble') {
-      // 随机获得一件未拥有的装备
-      const allEquip = [];
-      if (SHOP_CATALOG.weapons) {
-        Object.entries(SHOP_CATALOG.weapons).forEach(([key]) => {
-          const data = EQUIPMENT.weapons[key];
-          if (data && !(typeof unlockedWeapons !== 'undefined' && unlockedWeapons.has(key))
-              && !(typeof playerWeapon !== 'undefined' && playerWeapon && playerWeapon.id === key)) {
-            allEquip.push({ type:'weapon', key, data });
-          }
-        });
-      }
-      if (SHOP_CATALOG.armors) {
-        Object.entries(SHOP_CATALOG.armors).forEach(([key]) => {
-          const data = EQUIPMENT.armors[key];
-          if (data && !(typeof playerArmor !== 'undefined' && playerArmor && playerArmor.id === key)
-              && !(typeof unlockedArmors !== 'undefined' && unlockedArmors.has(key))) {
-            allEquip.push({ type:'armor', key, data });
-          }
-        });
-      }
-      if (SHOP_CATALOG.skills) {
-        Object.entries(SHOP_CATALOG.skills).forEach(([key]) => {
-          const data = EQUIPMENT.skills[key];
-          if (data && !(typeof playerSkill !== 'undefined' && playerSkill && playerSkill.id === key)) {
-            allEquip.push({ type:'skill', key, data });
-          }
-        });
-      }
-      if (SHOP_CATALOG.talismans) {
-        Object.entries(SHOP_CATALOG.talismans).forEach(([key]) => {
-          const data = EQUIPMENT.talismans[key];
-          if (data && !(typeof playerTalisman !== 'undefined' && playerTalisman && playerTalisman.id === key)
-              && !(typeof unlockedTalismans !== 'undefined' && unlockedTalismans.has(key))) {
-            allEquip.push({ type:'talisman', key, data });
-          }
-        });
-      }
-      if (allEquip.length > 0) {
-        const pick = allEquip[Math.floor(Math.random() * allEquip.length)];
-        equipItem(pick.type, pick.key, pick.data);
-        shopFeedback = { text: `获得了 ${pick.data.name}！`, color: '#ffdd88', timer: 80 };
+      // 意识共鸣：对当前武器铭刻/重铸额外效果（WEAPON_BUFFS buff）
+      if (playerWeapon && typeof WEAPON_BUFFS !== 'undefined') {
+        const wid = playerWeapon.id;
+        const pool = Object.keys(WEAPON_BUFFS);
+        const hasExtra = typeof weaponBuffs !== 'undefined' && weaponBuffs[wid];
+        let newBuff;
+        if (hasExtra) {
+          // 已有额外效果 → 重随成另一个（排除当前）
+          const others = pool.filter(b => b !== weaponBuffs[wid]);
+          newBuff = others[Math.floor(Math.random() * others.length)] || weaponBuffs[wid];
+        } else {
+          // 无额外效果 → 铭刻一个随机效果
+          newBuff = pool[Math.floor(Math.random() * pool.length)];
+        }
+        weaponBuffs[wid] = newBuff;
+        if (typeof saveGame === 'function') saveGame();
+        shopFeedback = { text: hasExtra ? `重铸效果 · ${WEAPON_BUFFS[newBuff].name}` : `铭刻效果 · ${WEAPON_BUFFS[newBuff].name}`, color: '#ffdd88', timer: 80 };
+        if (typeof Sound !== 'undefined') Sound.boost();
       } else {
-        shopFeedback = { text: '已拥有全部装备', color: '#888888', timer: 45 };
+        shopFeedback = { text: '尚未装备武器', color: '#888888', timer: 45 };
         shards += item.cost; // 退款
         updateShardsDisplay();
         if (typeof Sound !== 'undefined') Sound.stun();
@@ -540,6 +517,7 @@ function equipItem(type, key, data) {
       if (typeof skillState !== 'undefined') {
         skillState = { collected: [], chargeLevel: 0, ready: false };
       }
+      if (typeof eightGatesLevel !== 'undefined') eightGatesLevel = 0; // 换技能重置八门门数
       if (typeof updateSkillUI === 'function') updateSkillUI();
     }
   } else if (type === 'talisman') {

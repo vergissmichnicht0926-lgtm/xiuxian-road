@@ -183,6 +183,8 @@ function startCombatRoom(room) {
   if (enemyHPFill) enemyHPFill.style.background = '';
   if (typeof spawnEnemyFormation === 'function') {
     const formationOpts = { layer: room.layer || 1, formation: pickFormation(1, room.layer || 1) };
+    // 单敌房：固定 1 个、居中排列（放 split 分支前，split 房不带 count 字段不受影响）
+    if (room.count === 1) { formationOpts.count = 1; formationOpts.formation = 'line'; }
     // 分裂型第一轮：1 个，血/伤 ×1（后续轮次由 startNextCombatWave 递增）
     if (room.enemyType === 'split' && typeof splitWaveParams === 'function') {
       const sp = splitWaveParams(1);
@@ -293,6 +295,8 @@ function startNextCombatWave() {
   const waveNo = currentDiveRoom.waves - roomCombatWaves + 1;
   let enemyHp = modified.enemyHP + Math.floor(Math.random() * 10);
   const opts = { layer: layer, formation: pickFormation(waveNo, layer) };
+  // 单敌房：固定 1 个、居中排列（放 split 分支前）
+  if (currentDiveRoom.count === 1) { opts.count = 1; opts.formation = 'line'; }
   // 分裂型：按波次递增 1→2→4，血量逐轮减半
   if (currentDiveRoom.enemyType === 'split') {
     const sp = splitWaveParams(waveNo);
@@ -331,7 +335,9 @@ function respawnCurrentWave() {
   const layer = currentDiveRoom.layer || 1;
   const waveNo = currentDiveRoom.waves - roomCombatWaves + 1;
   if (typeof spawnEnemyFormation === 'function') {
-    spawnEnemyFormation(currentDiveRoom.hardMode, currentDiveRoom.enemyType, { layer: layer, formation: pickFormation(waveNo, layer) });
+    const opts = { layer: layer, formation: pickFormation(waveNo, layer) };
+    if (currentDiveRoom.count === 1) { opts.count = 1; opts.formation = 'line'; }
+    spawnEnemyFormation(currentDiveRoom.hardMode, currentDiveRoom.enemyType, opts);
   } else if (typeof spawnEnemyEntity === 'function') {
     spawnEnemyEntity(currentDiveRoom.hardMode, currentDiveRoom.enemyType);
   }
@@ -1090,10 +1096,62 @@ function markUniqueEventDone(id) {
   }
 }
 
+// ═══════════════ 技能传承事件（第一章低概率：获得未拥有技能，单局不重复、不可升级）═══
+const INHERIT_SKILL_IDS = ['eight_gates', 'kamehameha', 'guangzhi', 'jinitaimei', 'railgun'];
+let skillInheritGiven = [];   // 本局已 offer 过的技能（防读档刷）
+let skillInheritOffer = null; // 本次事件要给的技能 key
+
+function skillInheritPool() {
+  return INHERIT_SKILL_IDS.filter(k =>
+    EQUIPMENT && EQUIPMENT.skills && EQUIPMENT.skills[k]
+    && !(playerSkill && playerSkill.id === k)   // 当前未持有（单槽位）
+    && !skillInheritGiven.includes(k));         // 本局未 offer 过
+}
+
+function buildSkillInheritScenario(key) {
+  const s = EQUIPMENT.skills[key];
+  return {
+    id: 'skill_inherit',
+    ch1Dialogue: [
+      { mode:'plain', text:'（一段古老的心法在意识中浮现，闪着琥珀色的光。）' },
+      { mode:'float', speaker:'我', text:`「${s.name}」……这是失传的技艺。要接下吗？` },
+    ],
+    options: [
+      { text:`接受传承「${s.name}」`, action:'skill_inherit_accept' },
+      { text:'让心法沉入海底', action:'skill_inherit_leave' },
+    ],
+  };
+}
+
+function handleSkillInheritChoice(opt) {
+  if (opt.action === 'skill_inherit_accept' && skillInheritOffer && EQUIPMENT.skills[skillInheritOffer]) {
+    if (typeof equipItem === 'function') equipItem('skill', skillInheritOffer, EQUIPMENT.skills[skillInheritOffer]);
+  } else {
+    // 离开：威胁-1 + 少量碎片（与 skip 一致）
+    if (typeof threatLevel !== 'undefined') threatLevel = Math.max(0, threatLevel - 1);
+    if (typeof grantShards === 'function') grantShards(SHARD_REWARDS.EVENT_SKIP, W*0.5, H*0.5);
+  }
+  skillInheritOffer = null;
+  // 无怪物战斗，直接完成房间
+  eventMonsterDefeated = true;
+  eventMonsterWaves = 0;
+  roomDialogueIndex = 0;
+  roomDialogueQueue = [ opt.action === 'skill_inherit_accept'
+    ? { mode:'plain', text:'（心法融入意识。技能栏涌起一股新的力量。）' }
+    : { mode:'plain', text:'（心法缓缓沉入海底，像一粒沙。）' } ];
+  playRoomDialogue();
+}
+
 function startEventRoom(room) {
   const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
   let scenario;
-  if (inCh1) {
+  // ⚠️ 技能传承事件：第一章低概率（15%）优先触发，独立于独特/通用池，不消耗 unique 槽位
+  const inheritPool = skillInheritPool();
+  if (inCh1 && inheritPool.length > 0 && Math.random() < 0.15) {
+    skillInheritOffer = inheritPool[Math.floor(Math.random() * inheritPool.length)];
+    skillInheritGiven.push(skillInheritOffer); // offer 即标记，防读档刷
+    scenario = buildSkillInheritScenario(skillInheritOffer);
+  } else if (inCh1) {
     // 第一章：50% 出未触发的独特事件（碎片剧情优先），否则通用事件
     const uniques = (typeof UNIQUE_EVENTS !== 'undefined') ? UNIQUE_EVENTS.filter(e => !uniqueEventsDone.includes(e.id)) : [];
     if (uniques.length && Math.random() < 0.5) {
@@ -1269,6 +1327,9 @@ function handleEventChoice(opt) {
   } else if (opt.action === 'echo_deal' || opt.action === 'echo_altar' || opt.action === 'echo_trade') {
     // 代价换遗响（水镜 / 锚点祭坛 / 回声漩涡）
     handleEchoEventChoice(opt);
+  } else if (opt.action === 'skill_inherit_accept' || opt.action === 'skill_inherit_leave') {
+    // 技能传承：接受替换技能 / 离开
+    handleSkillInheritChoice(opt);
   } else {
     // 绕过去 — 威胁-1
     if (typeof threatLevel !== 'undefined') threatLevel = Math.max(0, threatLevel - 1);

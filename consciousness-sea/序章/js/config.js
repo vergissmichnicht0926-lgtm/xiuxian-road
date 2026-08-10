@@ -98,16 +98,16 @@ const EQUIPMENT = {
   },
   skills: {
     'concentration': {
-      id:'concentration', name:'凝神',
-      chars:['凝','神'], color:'#ffaa44', glow:'#cc7722',
+      id:'concentration', name:'卍解',
+      chars:['卍','解'], color:'#ffaa44', glow:'#cc7722',
       type:'sequence', effect:'nextAttackBoost',
-      desc:'凝聚心神，下一次攻击威力倍增。'
+      desc:'斩魄刀的最终解放。集齐「卍解」，下一次攻击威力倍增。'
     },
     'time_freeze': {
-      id:'time_freeze', name:'时间暂停',
-      chars:['时','间','暂','停'], color:'#44ddcc', glow:'#228888',
+      id:'time_freeze', name:'扎瓦鲁多',
+      chars:['扎','瓦','鲁','多'], color:'#44ddcc', glow:'#228888',
       type:'sequence', effect:'freezeTimer', freezeDuration:4,
-      desc:'干扰噪点的时间感知，冻结敌人行动4秒。'
+      desc:'「扎瓦鲁多！时间停止吧！」冻结敌人行动4秒。'
     },
     'excalibur': {
       id:'excalibur', name:'ex咖喱棒',
@@ -115,17 +115,37 @@ const EQUIPMENT = {
       type:'charge', effect:'chargedBurst',
       desc:'不断收集ex充能，由你决定何时释放。充能越高伤害越大。'
     },
-    'last_resort': {
-      id:'last_resort', name:'背水',
-      chars:['背','水'], color:'#dd8899', glow:'#aa4455',
-      type:'sequence', effect:'nextAttackBoost',
-      desc:'背水一战，凝聚心神——下一次攻击威力倍增。'
+    // ── v4.6+ 传承技能（不驻留商店基础货架；商店上架需工坊「传承共鸣」解锁概率）──
+    'eight_gates': {
+      id:'eight_gates', name:'八门遁甲',
+      chars:['八','门','遁','甲'], color:'#ff5544', glow:'#cc3322',
+      type:'sequence', effect:'eight_gates',
+      desc:'八门遁甲，禁术中的禁术。每次触发开启一门（生门→死门），伤害与自损随之递增。'
     },
-    'thunder_charge': {
-      id:'thunder_charge', name:'雷充',
-      chars:['雷','充'], color:'#ffcc44', glow:'#ccaa22',
-      type:'charge', effect:'chargedBurst',
-      desc:'汇聚雷元素充能，由你决定何时释放。充能越高伤害越大。'
+    'kamehameha': {
+      id:'kamehameha', name:'龟派气功',
+      chars:['龟','派','气','功'], color:'#66ccff', glow:'#2288dd',
+      type:'charge', effect:'chargedBurst', fieldCount:4, baseDmg:25, dmgPerCharge:15,
+      desc:'超长蓄力，集齐四字充能，释放毁天灭地的龟派气功。'
+    },
+    'guangzhi': {
+      id:'guangzhi', name:'广智救我',
+      chars:['广','智'], color:'#ffaa44', glow:'#cc7722',
+      type:'sequence', effect:'guangzhi',
+      desc:'广智救我！集齐两字，召唤火棍横扫全场。'
+    },
+    'jinitaimei': {
+      id:'jinitaimei', name:'鸡你太美',
+      chars:['鸡','你','太','美'], color:'#ff66aa', glow:'#cc3388',
+      type:'sequence', effect:'jinitaimei',
+      desc:'只因你太美。集齐四字，对目标造成冲击并留下精神污染（滞留伤害+定身）。'
+    },
+    // ── v4.7 传承技能 ──
+    'railgun': {
+      id:'railgun', name:'超电磁炮',
+      chars:['超','电','磁','炮'], color:'#88bbff', glow:'#4488ee',
+      type:'sequence', effect:'railgun',
+      desc:'御坂美琴的招牌技。集齐四字，以电磁加速硬币贯穿目标，并连锁溅射附近敌人。'
     }
   },
   // ── 护符：取代愈字，words=符字池, wordCount=战场数量, healMin/Max=点击回复量 ──
@@ -275,8 +295,6 @@ const SHOP_CATALOG = {
   skills: {
     'time_freeze': 100,
     'excalibur': 130,
-    'last_resort': 110,
-    'thunder_charge': 120,
   },
   talismans: {
     'vitality_charm': 100,
@@ -290,8 +308,7 @@ const SHOP_CATALOG = {
 // 局内商店固定消耗品
 const SHOP_CONSUMABLES = {
   heal: { name:'意识修复', desc:'回复40点意识完整度', cost:30, effect:'heal', value:40 },
-  purify: { name:'词元净化', desc:'清除所有干扰字', cost:20, effect:'purify' },
-  gamble: { name:'意识共鸣', desc:'随机获得一件未拥有的装备', cost:50, effect:'gamble' },
+  gamble: { name:'意识共鸣', desc:'为当前武器铭刻或重铸一个额外效果', cost:50, effect:'gamble' },
 };
 
 // 局外永久升级配置
@@ -319,6 +336,10 @@ const PERMANENT_UPGRADES = {
   fusionLuck: {
     name:'融合之缘', desc:'装备融合成功率 +10%/级', cost:50, maxLevel:3,
     icon:'✦',
+  },
+  inheritShop: {
+    name:'传承共鸣', desc:'商店中出现传承技能的概率 +5%/级', cost:40, maxLevel:5,
+    icon:'⚡',
   },
 };
 
@@ -397,14 +418,16 @@ const HUB_FIRST_DIVE_STORY = [
 // 房间类型池（潜航时随机抽取）
 const ROGUELIKE_ROOM_POOL = {
   combat: [
-    { id:'rc1', type:'combat', label:'残响碎片', enemyType:'bash', waves:3, enemyHP:40, enemyInterval:5.0, enemyDmgMult:1.2, hardMode:false,
-      desc:'被遗弃的记忆碎片化作了噪点。会周期性地冲撞你的意识。' },
-    { id:'rc2', type:'combat', label:'齐射噪点', enemyType:'volley', waves:3, enemyHP:48, enemyInterval:6.0, enemyDmgMult:1.4, hardMode:false,
+    // 单敌房（count:1 波次多）：孤身强敌，逐个击破
+    { id:'rc1', type:'combat', label:'残响碎片', enemyType:'bash', waves:4, count:1, enemyHP:40, enemyInterval:5.0, enemyDmgMult:1.2, hardMode:false,
+      desc:'被遗弃的记忆碎片化作了噪点。孤身一只，却会周期性地冲撞你的意识。' },
+    { id:'rc3', type:'combat', label:'雨幕噪点', enemyType:'rain', waves:4, count:1, enemyHP:58, enemyInterval:4.8, enemyDmgMult:1.4, hardMode:false,
+      desc:'降下漫天意识之雨。仅一只便足以封锁全场，考验走位。' },
+    { id:'rc4', type:'combat', label:'追踪残响', enemyType:'track', waves:4, count:1, enemyHP:64, enemyInterval:2.8, enemyDmgMult:1.8, hardMode:true,
+      desc:'只发一颗追踪弹，但它蓄力极快，不会停下，直到追上你的光标。一只足以致命。' },
+    // 多敌房（编队，波次少）：群起而攻，快速解决
+    { id:'rc2', type:'combat', label:'齐射噪点', enemyType:'volley', waves:2, enemyHP:48, enemyInterval:6.0, enemyDmgMult:1.4, hardMode:false,
       desc:'朝你齐射大量意识弹幕。一波很多发，但蓄力较慢。' },
-    { id:'rc3', type:'combat', label:'雨幕噪点', enemyType:'rain', waves:2, enemyHP:58, enemyInterval:4.8, enemyDmgMult:1.4, hardMode:false,
-      desc:'降下漫天意识之雨。弹幕无死角，考验走位。' },
-    { id:'rc4', type:'combat', label:'追踪残响', enemyType:'track', waves:2, enemyHP:64, enemyInterval:2.8, enemyDmgMult:1.8, hardMode:true,
-      desc:'只发一颗追踪弹，但它蓄力极快，不会停下，直到追上你的光标。' },
     { id:'rc5', type:'combat', label:'护壁残响', enemyType:'shield', waves:2, enemyHP:74, enemyInterval:3.8, enemyDmgMult:1.6, hardMode:true,
       desc:'外层有一层意识护壁，直接攻击伤害减半。先破壁再破心。' },
     { id:'rc6', type:'combat', label:'分裂残响', enemyType:'split', waves:3, enemyHP:52, enemyInterval:5.0, enemyDmgMult:1.0, hardMode:false,

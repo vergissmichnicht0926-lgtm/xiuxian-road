@@ -111,7 +111,7 @@ const Tutorial = {
         this._introPlayed = false;
         this._phaseComplete = false;
         this.dialogueQueue = [
-          { mode:'float', speaker:'零', text:'那些琥珀色的字……是你装备的技能符文。「凝神」——按顺序收集「凝」和「神」，就能触发倍击。', speed:30 },
+          { mode:'float', speaker:'零', text:'那些琥珀色的字……是你装备的技能符文。「卍解」——按顺序收集「卍」和「解」，就能触发倍击。', speed:30 },
         ];
         this._playNextDialogue();
         break;
@@ -401,12 +401,12 @@ const Tutorial = {
         if (!this._introPlayed) {
           this._introPlayed = true;
           const hint = document.getElementById('stage-hint');
-          hint.textContent = '按顺序收集技能字：凝 → 神';
+          hint.textContent = '按顺序收集技能字：卍 → 解';
           hint.style.opacity = '0.7';
           this.progressTarget = 1; // 完成一次技能触发
           battleWords = [];
           // 生成琥珀色技能字
-          this._spawnSkillChar('凝');
+          this._spawnSkillChar('卍');
           for(let i=0;i<3;i++) this._addTutorialWord('攻');
         } else {
           this.enterPhase(PHASE.TUTORIAL_NOISE);
@@ -588,7 +588,7 @@ const Tutorial = {
             nextAttackBoost=true;
             if(skillState) skillState.ready=true;
             for(let i=0;i<15;i++) particles.push(new HitParticle(W*0.5,H*0.5,cfg.color,'◆'));
-            particles.push(new DamageText(W*0.5,H*0.45,'凝神·倍击!',cfg.color));
+            particles.push(new DamageText(W*0.5,H*0.45,'卍解·倍击!',cfg.color));
             if(skillState) skillState.collected=[];
             updateSkillUI();
             // 教程进度

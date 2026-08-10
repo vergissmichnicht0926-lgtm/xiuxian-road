@@ -481,6 +481,7 @@ function update(dt) {
     if(typeof mentor !== 'undefined') mentor.update(Date.now());
     if(typeof updateHub === 'function') updateHub(dt);
     if(typeof updateBestiary === 'function') updateBestiary(dt);
+    if(typeof updateAchievements === 'function') updateAchievements(dt);
     return; // Hub中暂停游戏逻辑
   }
 
@@ -573,6 +574,7 @@ function update(dt) {
   // 始终隐藏系统光标（背包/图鉴/商店/地图/事件选项等UI模式除外，保留hover反馈）
   const _uiModes = [typeof backpackOpen !== 'undefined' && backpackOpen,
     typeof bestiaryOpen !== 'undefined' && bestiaryOpen,
+    typeof achievementsOpen !== 'undefined' && achievementsOpen,
     typeof shopOpen !== 'undefined' && shopOpen,
     typeof mapActive !== 'undefined' && mapActive,
     typeof eventOptionsActive !== 'undefined' && eventOptionsActive,
@@ -728,6 +730,20 @@ function update(dt) {
       particles.push(new DamageText(ex + (Math.random() - 0.5) * 30, ey - 10, `炎-${blazeDmg}`, '#ff6600'));
     }
     if (blazeTimer <= 0) { blazeActive = false; blazeCooldown = 3.0; }
+  }
+
+  // 滞留伤害 DoT（鸡你太美精神污染）：tick 走 dealDamageToEnemy 正常统计+武器buff
+  if (typeof enemyList !== 'undefined') {
+    for (const e of enemyList) {
+      if (!e.alive || !e.dot) continue;
+      e.dot.timer += dt;
+      if (e.dot.timer >= e.dot.tick) {
+        e.dot.timer = 0;
+        e.dot.duration -= e.dot.tick;
+        if (typeof dealDamageToEnemy === 'function') dealDamageToEnemy(e, e.dot.dmg, false, false);
+        if (e.dot.duration <= 0) e.dot = null;
+      }
+    }
   }
 
   // 敌人实体动画 + 普通敌人弹幕
@@ -998,6 +1014,11 @@ function draw() {
     if(typeof drawBestiary === 'function') drawBestiary(ctx);
   }
 
+  // 成就（Hub中打开，覆盖在Hub之上，与图鉴互斥）
+  if(typeof achievementsOpen !== 'undefined' && achievementsOpen){
+    if(typeof drawAchievements === 'function') drawAchievements(ctx);
+  }
+
   // 商店模式（Canvas绘制，优先于背包）
   if(typeof shopOpen !== 'undefined' && shopOpen){
     if(typeof drawShop === 'function') drawShop(ctx);
@@ -1248,6 +1269,8 @@ canvas.addEventListener('click',e=>{
   if(typeof hubActive !== 'undefined' && hubActive) {
     if(typeof bestiaryOpen !== 'undefined' && bestiaryOpen) {
       if(typeof handleBestiaryClick === 'function') handleBestiaryClick(cx, cy);
+    } else if(typeof achievementsOpen !== 'undefined' && achievementsOpen) {
+      if(typeof handleAchievementsClick === 'function') handleAchievementsClick(cx, cy);
     } else if(typeof handleHubClick === 'function') {
       handleHubClick(cx, cy);
     }
@@ -1387,8 +1410,8 @@ window.addEventListener('keydown', e => {
       return;
     }
   }
-  // 空格：释放蓄力技能
-  if(e.key === ' ' && Tutorial.phase===PHASE.BATTLE && !backpackOpen && !bossActive){
+  // 空格：释放蓄力技能（Boss 战也可释放，dealSkillDamage 分发到 Boss）
+  if(e.key === ' ' && Tutorial.phase===PHASE.BATTLE && !backpackOpen){
     e.preventDefault();
     if(playerSkill && playerSkill.type==='charge'){
       releaseChargedSkill();
@@ -1419,6 +1442,7 @@ function saveGame() {
     permanentUpgrades: typeof permanentUpgrades !== 'undefined' ? permanentUpgrades : {},
     affection: Tutorial.affection,
     uniqueEventsDone: typeof uniqueEventsDone !== 'undefined' ? uniqueEventsDone.slice() : [],
+    achievements: typeof achievements !== 'undefined' ? achievements : {},
 
     // ── 游戏位置 ⭐ ──
     prologuePhase: prologuePhase,
@@ -1548,6 +1572,7 @@ function resumeFromSave(save) {
   if (typeof save.permanentUpgrades !== 'undefined' && typeof initPermanentUpgrades === 'function') initPermanentUpgrades(save.permanentUpgrades);
   if (typeof save.affection !== 'undefined') Tutorial.affection = save.affection;
   if (Array.isArray(save.uniqueEventsDone) && typeof uniqueEventsDone !== 'undefined') uniqueEventsDone = save.uniqueEventsDone;
+  if (save.achievements && typeof achievements !== 'undefined') achievements = save.achievements;
 
   // ── 基础初始化 ──
   Dialogue.init();
@@ -1680,11 +1705,12 @@ function _restoreEquipment(save) {
     playerArmor = EQUIPMENT.armors['thin_silk'];
     playerDefense = (typeof getArmorDefense === 'function') ? getArmorDefense(playerArmor) : ((playerArmor && playerArmor.defense) || 0);
   }
-  // 技能（固有，始终有默认值）
+  // 技能（固有，始终有默认值；被删技能/未知 id 兜底到卍解，并重置收集进度防旧档卡死）
   if (save.skillId && EQUIPMENT.skills[save.skillId]) {
     playerSkill = EQUIPMENT.skills[save.skillId];
   } else {
     playerSkill = EQUIPMENT.skills['concentration'];
+    if (typeof skillState !== 'undefined') skillState = { collected: [], chargeLevel: 0, ready: false };
   }
   // 护符
   playerTalisman = (save.talismanId && EQUIPMENT.talismans[save.talismanId])
@@ -1889,6 +1915,7 @@ function startPrologue() {
   if (typeof equipProficiency !== 'undefined') equipProficiency = {}; // 新档重置装备熟练度
   if (typeof resetRunStats === 'function') resetRunStats();          // 新档重置本局统计
   uniqueEventsDone = []; // 新档重置独特事件标记
+  achievements = {}; // 新档重置成就（成就进主存档，随新档清空）
   if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合
   // 应用永久升级（新游戏时为空，无效果）
   if (typeof applyPermanentUpgrades === 'function') applyPermanentUpgrades();

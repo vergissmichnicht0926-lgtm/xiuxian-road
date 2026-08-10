@@ -186,7 +186,7 @@ function openXiaoyingMenu() {
   hubMenuItems = [
     { id: 'bestiary', label: '图鉴',    desc: '意识之海中遇到的一切', x: cx, y: cy,       baseX: cx, baseY: cy, alpha: 0, targetAlpha: 0.9, color: '#88ccff', glow: '#4488cc', hovered: false },
     { id: 'workshop', label: '工坊',    desc: '用灵魂结晶强化意识',   x: cx, y: cy + 40,  baseX: cx, baseY: cy + 40, alpha: 0, targetAlpha: 0.9, color: '#ffcc88', glow: '#cc8844', hovered: false },
-    { id: 'achievements', label: '成就', desc: '深海中的足迹（施工中）', x: cx, y: cy + 80, baseX: cx, baseY: cy + 80, alpha: 0, targetAlpha: 0.6, color: '#999999', glow: '#666666', hovered: false },
+    { id: 'achievements', label: '成就', desc: '深海中的足迹', x: cx, y: cy + 80, baseX: cx, baseY: cy + 80, alpha: 0, targetAlpha: 0.9, color: '#ffcc88', glow: '#cc8844', hovered: false },
   ];
 }
 
@@ -450,31 +450,30 @@ function drawXiaoyingMenu(ctx) {
   hubMenuItems.forEach(item => {
     if (item.alpha < 0.03) return;
     const isHovered = item.hovered;
-    const isDisabled = item.id === 'achievements';
 
     ctx.save();
-    ctx.globalAlpha = item.alpha * (isDisabled ? 0.5 : 1);
+    ctx.globalAlpha = item.alpha;
 
     const w = 160, h = 36, r = 6;
     const cx = item.x, cy = item.y;
 
     // 卡片背景
-    const bgAlpha = isHovered && !isDisabled ? 0.15 : 0.06;
+    const bgAlpha = isHovered ? 0.15 : 0.06;
     ctx.fillStyle = `rgba(255,220,180,${bgAlpha})`;
-    if (isHovered && !isDisabled) {
+    if (isHovered) {
       ctx.globalAlpha = 0.5;
       ctx.strokeStyle = item.glow;
     } else {
       ctx.globalAlpha = item.alpha * 0.08;
       ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     }
-    ctx.lineWidth = isHovered && !isDisabled ? 1.5 : 0.5;
+    ctx.lineWidth = isHovered ? 1.5 : 0.5;
     roundRect(ctx, cx - w/2, cy - h/2, w, h, r);
     ctx.fill();
     ctx.stroke();
 
     // 光晕
-    if (isHovered && !isDisabled) {
+    if (isHovered) {
       ctx.shadowColor = item.glow;
       ctx.shadowBlur = 12;
       ctx.fillStyle = item.color;
@@ -483,16 +482,16 @@ function drawXiaoyingMenu(ctx) {
       ctx.fillText(item.label, cx, cy - 4);
       ctx.shadowBlur = 0;
     } else {
-      ctx.fillStyle = isDisabled ? '#666' : item.color;
+      ctx.fillStyle = item.color;
       ctx.font = '15px "Noto Serif SC","SimSun",serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(item.label, cx, cy - 4);
     }
 
     // 描述
-    ctx.fillStyle = isDisabled ? 'rgba(150,150,150,0.3)' : 'rgba(180,190,210,0.35)';
+    ctx.fillStyle = 'rgba(180,190,210,0.35)';
     ctx.font = '9px "Noto Serif SC","SimSun",serif';
-    ctx.fillText(isDisabled ? '施工中…' : item.desc, cx, cy + 14);
+    ctx.fillText(item.desc, cx, cy + 14);
 
     ctx.restore();
   });
@@ -606,8 +605,9 @@ function handleHubClick(cx, cy) {
         if (typeof openSoulShop === 'function') openSoulShop();
         return;
       } else if (hubMenuHovered.id === 'achievements') {
-        // 成就——占位，不执行任何操作
-        if (typeof Sound !== 'undefined') Sound.stun();
+        // 打开成就面板
+        closeXiaoyingMenu();
+        if (typeof openAchievements === 'function') openAchievements();
         return;
       }
     } else {

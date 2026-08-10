@@ -1130,6 +1130,9 @@ function damageBoss(dmg, multiplier) {
     if (newHP <= bossState.maxHP * 0.2) {
       bossState.hp = Math.floor(bossState.maxHP * 0.2);
       bossState._fusionTriggered = true;
+      // 成就「遗的终结」+ 图鉴记忆（遗到不了 defeatBoss，此前 registerMemory 永远不可达）
+      if (typeof unlockAchievement === 'function') unlockAchievement('ach_yi');
+      if (typeof registerMemory === 'function') registerMemory('memory_yi_defeated');
       bossState._fusionPending = true; // 防止DEFEATED阶段清除bossActive
       bossState.phase = BOSS_PHASE.DEFEATED;
       bossState.timer = 0;
@@ -1187,6 +1190,9 @@ function damageBoss(dmg, multiplier) {
 
 /** 憾：20%血量逃跑演出 */
 function triggerHanFlee() {
+  // 成就「憾的退却」+ 图鉴记忆（憾到不了 defeatBoss，此前 registerMemory 永远不可达）
+  if (typeof unlockAchievement === 'function') unlockAchievement('ach_regret');
+  if (typeof registerMemory === 'function') registerMemory('memory_regret_defeated');
   bossState.phase = BOSS_PHASE.DEFEATED;
   bossState.timer = 0;
   bossProjectiles = [];
@@ -1301,17 +1307,21 @@ function defeatBoss() {
     grantShards(reward, W*0.5, H*0.25);
   }
 
-  // 图鉴：解锁Boss击败记忆
+  // 图鉴：解锁Boss击败记忆（憾/遗 走 triggerHanFlee / 遗假撤退分支，这里到不了）
   if (typeof registerMemory === 'function') {
     const bossKey = bossState._bossKey || 'regret';
     const memMap = {
-      'regret': 'memory_regret_defeated',
-      'yi': 'memory_yi_defeated',
       'recall': 'memory_recall_defeated',
       'obsess': 'memory_obsess_defeated',
       'regretful': 'memory_regretful_defeated',
     };
     if (memMap[bossKey]) registerMemory(memMap[bossKey]);
+  }
+  // 成就：第一章三 Boss 首次击败
+  if (typeof unlockAchievement === 'function') {
+    const bossKey = bossState ? bossState._bossKey : null;
+    const achMap = { 'recall':'ach_recall', 'obsess':'ach_obsess', 'regretful':'ach_regretful' };
+    if (achMap[bossKey]) unlockAchievement(achMap[bossKey]);
   }
 
   const cx=W*0.5,cy=H*0.2;

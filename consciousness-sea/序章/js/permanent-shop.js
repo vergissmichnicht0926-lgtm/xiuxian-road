@@ -78,6 +78,12 @@ function getFusionLuck() {
   return level * 0.10;
 }
 
+/** 获取商店上架传承技能概率（传承共鸣修正，每级 +5%） */
+function getInheritShopChance() {
+  const level = getUpgradeLevel('inheritShop');
+  return level * 0.05;
+}
+
 // ═══════════════ 局外商店 UI ═══════════════
 
 let soulShopOpen = false;

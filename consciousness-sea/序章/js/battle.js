@@ -121,6 +121,8 @@ function buildEnemyObj(hardMode, enemyType, x, y, hp, interval, idx, splitLevel)
       hurtFlash: 0,
       wobbleX: 0, wobbleY: 0,
     },
+    stun: 0,          // 眩晕计时（>0 时不攻击、攻击计时暂停；鸡你太美定身）
+    dot: null,        // 滞留伤害 { dmg, tick, timer, duration }（鸡你太美精神污染）
     alive: true,
   };
 }
@@ -332,6 +334,8 @@ function resetRunStats() {
   runKills = 0; runEliteKills = 0; runBossKills = 0;
   maxLayerReached = 1;
   runEquipGains = {};
+  if (typeof skillInheritGiven !== 'undefined') skillInheritGiven = []; // 技能传承防刷标记（每局重置）
+  eightGatesLevel = 0; // 八门遁甲门数（每局重置）
 }
 
 /** 小萤出发前随机提供装备：基础件 + 熟练度达标件（weaponGift 升级 = 武器池全开） */
@@ -469,6 +473,26 @@ function dealDamage(dmg,isCombo,target) {
     document.getElementById('enemy-timer-fill').style.width='100%';
     document.getElementById('enemy-timer-fill').classList.remove('urgent');
   }
+}
+
+/** 技能伤害统一分发：Boss 战打 Boss（伤害减半，尊重憾/遗 20% 剧情分支），普通战打敌人编队 */
+function dealSkillDamage(dmg, isAoe) {
+  if (typeof bossActive !== 'undefined' && bossActive && typeof bossState !== 'undefined' && bossState
+      && (typeof BOSS_PHASE === 'undefined' || bossState.phase !== BOSS_PHASE.DEFEATED)) {
+    // Boss 战：enemyList 为空，走 damageBoss（Boss 战伤害减半平衡，boss.js 后加载需运行期检测）
+    if (typeof damageBoss === 'function') damageBoss(Math.max(1, Math.floor(dmg * 0.5)), 1);
+    return;
+  }
+  const alive = enemyList.filter(e => e.alive);
+  if (!alive.length) return;
+  if (isAoe) {
+    for (const e of alive) dealDamageToEnemy(e, dmg, true, true);
+  } else {
+    const main = getMainEnemy();
+    if (main) dealDamageToEnemy(main, dmg, true, false);
+  }
+  syncEnemyCompat();
+  updateEnemyUI();
 }
 
 /** 对单个敌人造成伤害（武器buff挂接点：处刑/专注/风暴/穿透/连锁/汲取） */
@@ -632,6 +656,7 @@ function updateEnemyTimers(dt) {
   let attacked = false;
   for (const e of enemyList) {
     if (!e.alive) continue;
+    if (e.stun > 0) { e.stun -= dt; continue; } // 眩晕：不攻击、攻击计时暂停
     e.timer -= dt;
     if (e.timer <= 0) {
       e.timer = e.interval;
@@ -842,8 +867,8 @@ function balanceWords() {
           battleWords.push(sw); addedThisCall++;
         }
       }
-      // 蓄力型：持续生成e/x
-      if(playerSkill.type==='charge' && skillOnField<2 && skillState && addedThisCall < maxPerCall){
+      // 蓄力型：持续生成技能字（fieldCount 控制场上字数量，默认 2）
+      if(playerSkill.type==='charge' && skillOnField<(playerSkill.fieldCount||2) && skillState && addedThisCall < maxPerCall){
         const char=playerSkill.chars[Math.floor(Math.random()*playerSkill.chars.length)];
         const sw=new BattleWord('skill',char);
         sw.vx*=diff.speed;sw.vy*=diff.speed;sw.wobbleAmp*=diff.speed;
@@ -953,6 +978,10 @@ function collectSkillChar(bw) {
   refreshWords();
 }
 
+/** 八门遁甲：递进门数（生门→死门，6级封顶；换技能/新局重置） */
+let eightGatesLevel = 0;
+const EIGHT_GATES_NAMES = ['生门','伤门','杜门','景门','惊门','死门'];
+
 /** 触发技能效果 */
 function triggerSkill() {
   if(!playerSkill||!skillState) return;
@@ -962,7 +991,7 @@ function triggerSkill() {
     nextAttackBoost=true;
     skillState.ready=true;
     for(let i=0;i<15;i++) particles.push(new HitParticle(W*0.5,H*0.5,cfg.color,'◆'));
-    particles.push(new DamageText(W*0.5,H*0.45,'凝神·倍击!',cfg.color));
+    particles.push(new DamageText(W*0.5,H*0.45,'卍解·倍击!',cfg.color));
     Sound.boost();
   }
   if(playerSkill.effect==='freezeTimer'){
@@ -972,8 +1001,68 @@ function triggerSkill() {
     }
     syncEnemyCompat();
     for(let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'❄'));
-    particles.push(new DamageText(W*0.5,H*0.25,'时间暂停!',cfg.color));
+    particles.push(new DamageText(W*0.5,H*0.25,'砸瓦鲁多!',cfg.color));
     Sound.boost();
+  }
+  // 八门遁甲：递进型（生门→死门，每触发升一门，伤害+自损递增）
+  if(playerSkill.effect==='eight_gates'){
+    eightGatesLevel = Math.min(EIGHT_GATES_NAMES.length, eightGatesLevel + 1);
+    const g = eightGatesLevel;
+    const dmg = 25 + 12 * g;   // 37 → 97
+    const cost = 4 + 2 * g;    // 6 → 16
+    dealSkillDamage(dmg, true);
+    for(let i=0;i<30;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'🔥'));
+    particles.push(new DamageText(W*0.5,H*0.3,`八门遁甲·${EIGHT_GATES_NAMES[g-1]}!`,cfg.color));
+    Sound.anomaly();
+    // 代价：自损（无视防御/护盾，与伤害语义一致）
+    playerHP = Math.max(0, playerHP - cost);
+    updatePlayerUI();
+    particles.push(new DamageText(W*0.5,H*0.55,`-${cost}`, '#ff4444'));
+    if(playerHP<=0 && typeof handlePlayerDeath==='function'){ handlePlayerDeath(); return; }
+  }
+  // 广智救我：火棍横扫全场
+  if(playerSkill.effect==='guangzhi'){
+    dealSkillDamage(25, true);
+    for(let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'🔥'));
+    particles.push(new DamageText(W*0.5,H*0.3,'广智救我!',cfg.color));
+    Sound.boost();
+  }
+  // 鸡你太美：单体冲击 + 滞留伤害(DoT) + 定身（Boss 免疫控制，吃单体伤害）
+  if(playerSkill.effect==='jinitaimei'){
+    const bossFight = typeof bossActive !== 'undefined' && bossActive && typeof bossState !== 'undefined' && bossState;
+    if(!bossFight && !getMainEnemy()){
+      particles.push(new DamageText(W*0.5,H*0.3,'没有目标','#888888'));
+    } else {
+      dealSkillDamage(30, false);
+      const main = getMainEnemy();
+      if(main){
+        main.stun = 3;
+        main.dot = { dmg:10, tick:1.0, timer:0, duration:3 };
+      }
+      for(let i=0;i<25;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'★'));
+      particles.push(new DamageText(W*0.5,H*0.3,'鸡你太美!',cfg.color));
+      Sound.comboMilestone(5);
+    }
+  }
+  // 超电磁炮：单体贯穿 + 连锁溅射（普通战对其他存活敌人 30%）
+  if(playerSkill.effect==='railgun'){
+    const bossFight = typeof bossActive !== 'undefined' && bossActive && typeof bossState !== 'undefined' && bossState;
+    if(!bossFight && !getMainEnemy()){
+      particles.push(new DamageText(W*0.5,H*0.3,'没有目标','#888888'));
+    } else {
+      const main = getMainEnemy();
+      dealSkillDamage(45, false);
+      if(main && !bossFight){
+        for(const o of enemyList){
+          if(o.alive && o !== main) dealDamageToEnemy(o, Math.floor(45*0.3), false, false);
+        }
+        syncEnemyCompat();
+        updateEnemyUI();
+      }
+      for(let i=0;i<25;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'⚡'));
+      particles.push(new DamageText(W*0.5,H*0.3,'超电磁炮!',cfg.color));
+      Sound.comboMilestone(6);
+    }
   }
 
   // 重置收集
@@ -987,8 +1076,13 @@ function releaseChargedSkill() {
   const lv=skillState.chargeLevel||0;
   if(lv<=0) return;
   const cfg=getCatConfig('skill');
-  const dmg=5+lv*3;
-  dealDamage(dmg,true);
+  const dmg=(playerSkill.baseDmg||5)+lv*(playerSkill.dmgPerCharge||3);
+  // Boss 战走技能分发（打 Boss），普通战保持原 dealDamage 语义（随武器 targetMode 单体/AOE）
+  if (typeof bossActive !== 'undefined' && bossActive && typeof bossState !== 'undefined' && bossState) {
+    dealSkillDamage(dmg, true);
+  } else {
+    dealDamage(dmg, true);
+  }
   for(let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'★'));
   particles.push(new DamageText(W*0.5,H*0.25,`EX·${lv}!`,cfg.color));
   Sound.comboMilestone(Math.min(lv,7));
