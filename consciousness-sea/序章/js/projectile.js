@@ -27,6 +27,8 @@ class Projectile {
     this._wavePhase = 0; // 初始相位
     this._baseX = 0;     // 摆动基准X
     this._trail = [];    // 拖尾轨迹（表现强化）
+    this._homing = null;    // 追尾 { speed, turnRate }：每帧 re-aim 向鼠标（回声弹/锁链头）
+    this._echoSource = null;// 记忆弹标记 { delay, echoDamage, echoSpeed }：命中留余音
   }
 
   update(dt) {
@@ -39,6 +41,19 @@ class Projectile {
     // 正弦摆动
     if (this._waveAmp > 0) {
       this.x = this._baseX + Math.sin(this.age * this._waveFreq + this._wavePhase) * this._waveAmp;
+    }
+    // 追尾（回声弹/锁链头）：每帧 re-aim 向当前鼠标，限角速度防瞬移
+    if (this._homing && typeof mx !== 'undefined' && typeof my !== 'undefined') {
+      const ta = Math.atan2(my - this.y, mx - this.x);
+      const ca = Math.atan2(this.vy, this.vx);
+      let da = ta - ca;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      const turn = (this._homing.turnRate || 3.0) * dt;
+      const a = ca + Math.max(-turn, Math.min(turn, da));
+      const spd = this._homing.speed || Math.hypot(this.vx, this.vy);
+      this.vx = Math.cos(a) * spd;
+      this.vy = Math.sin(a) * spd;
     }
 
     const m = 80;

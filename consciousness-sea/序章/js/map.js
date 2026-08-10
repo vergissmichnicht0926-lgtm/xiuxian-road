@@ -123,8 +123,22 @@ function generateRoguelikeMap() {
     });
 
     // 段末 Boss
-    rooms.push({ id: genId('boss'), type: 'boss', label: seg.bossLabel, layer: nextLayer,
-      bossKey: seg.bossKey, desc: seg.bossDesc || '深海的守护者。' });
+    let bossKey = seg.bossKey, bossLabel = seg.bossLabel, bossDesc = seg.bossDesc || '深海的守护者。';
+    if (bossKey === 'deep_fragment') {
+      // 第3层：结局可触发前 = 碎片态（憾/遗随机，数值平衡），可触发后 = 遗憾完全体
+      if (typeof zeroReturnTriggered !== 'undefined' && zeroReturnTriggered) {
+        bossKey = 'regretful'; bossLabel = '遗憾';
+        bossDesc = '深海的信号终于完整了。遗憾以完整的姿态，等着你。';
+      } else {
+        bossKey = Math.random() < 0.5 ? 'regret_abyss' : 'yi_abyss';
+        bossLabel = bossKey === 'regret_abyss' ? '憾' : '遗';
+        bossDesc = bossKey === 'regret_abyss'
+          ? '执念碎片在深海中膨胀。被锁链缠住时，点「断」挣脱。'
+          : '遗落的碎片仍在回响。点击「余音」，别让过去追上你。';
+      }
+    }
+    rooms.push({ id: genId('boss'), type: 'boss', label: bossLabel, layer: nextLayer,
+      bossKey: bossKey, desc: bossDesc });
     // 记录该层段边界（分屏显示用）
     dynamicSegments.push({ name: seg.name, startLayer: segStart, endLayer: nextLayer });
     nextLayer++;

@@ -263,10 +263,20 @@ const SHARD_REWARDS = {
   BOSS_YI: 80,             // Boss「遗」融合完成
   BOSS_RECALL: 40,         // Boss「忆」击败（第1层）
   BOSS_OBSESS: 60,         // Boss「执」击败（第2层）
-  BOSS_REGRETFUL: 100,     // Boss「遗憾」击败（第3层）
+  BOSS_REGRET_ABYSS: 100,  // 深层碎片态「憾」击败
+  BOSS_YI_ABYSS: 100,      // 深层碎片态「遗」击败
+  BOSS_REGRETFUL: 120,     // Boss「遗憾」完全体击败（结局）
   EVENT_FORCE: 20,         // 事件-强行打开
   EVENT_SKIP: 5,           // 事件-绕过
 };
+
+// 击败 Boss 获得零的能量碎片（通关收集要素 → Hub 回复零能量 → 触发第一章结局）
+const BOSS_ENERGY = {
+  recall: 1, obsess: 1,
+  regret_abyss: 1, yi_abyss: 1,
+  regretful: 2,
+};
+const ZERO_ENERGY_TOTAL = 4;   // 零能量满阈值（达到后第三层切换为遗憾完全体并解锁结局）
 
 // 局外货币结算 — 灵魂结晶(soulCrystals)，永久积累
 const SOUL_REWARDS = {
@@ -419,7 +429,7 @@ const HUB_FIRST_DIVE_STORY = [
 const ROGUELIKE_ROOM_POOL = {
   combat: [
     // 单敌房（count:1 波次多）：孤身强敌，逐个击破
-    { id:'rc1', type:'combat', label:'残响碎片', enemyType:'bash', waves:4, count:1, enemyHP:40, enemyInterval:5.0, enemyDmgMult:1.2, hardMode:false,
+    { id:'rc1', type:'combat', label:'残响碎片', enemyType:'bash', waves:4, count:1, enemyHP:40, enemyInterval:5.0, enemyDmgMult:1.0, hardMode:false,
       desc:'被遗弃的记忆碎片化作了噪点。孤身一只，却会周期性地冲撞你的意识。' },
     { id:'rc3', type:'combat', label:'雨幕噪点', enemyType:'rain', waves:4, count:1, enemyHP:58, enemyInterval:4.8, enemyDmgMult:1.4, hardMode:false,
       desc:'降下漫天意识之雨。仅一只便足以封锁全场，考验走位。' },
@@ -428,9 +438,9 @@ const ROGUELIKE_ROOM_POOL = {
     // 多敌房（编队，波次少）：群起而攻，快速解决
     { id:'rc2', type:'combat', label:'齐射噪点', enemyType:'volley', waves:2, enemyHP:48, enemyInterval:6.0, enemyDmgMult:1.4, hardMode:false,
       desc:'朝你齐射大量意识弹幕。一波很多发，但蓄力较慢。' },
-    { id:'rc5', type:'combat', label:'护壁残响', enemyType:'shield', waves:2, enemyHP:74, enemyInterval:3.8, enemyDmgMult:1.6, hardMode:true,
+    { id:'rc5', type:'combat', label:'护壁残响', enemyType:'shield', waves:2, enemyHP:74, enemyInterval:3.8, enemyDmgMult:1.2, hardMode:true,
       desc:'外层有一层意识护壁，直接攻击伤害减半。先破壁再破心。' },
-    { id:'rc6', type:'combat', label:'分裂残响', enemyType:'split', waves:3, enemyHP:52, enemyInterval:5.0, enemyDmgMult:1.0, hardMode:false,
+    { id:'rc6', type:'combat', label:'分裂残响', enemyType:'split', waves:3, enemyHP:52, enemyInterval:5.0, enemyDmgMult:0.8, hardMode:false,
       desc:'分裂的噪点群：第一轮1个，第二轮2个，第三轮4个——每一轮都更小更弱，但数量翻倍。' },
   ],
   event: [
@@ -472,8 +482,8 @@ const ROGUELIKE_MAP_TEMPLATE = {
     },
     {
       name: '深层',
-      bossKey: 'regretful', bossLabel: '遗憾',
-      bossDesc: '遗憾本身的具现化。心为追忆，贵为遗失的珍宝——它已无法回头。',
+      bossKey: 'deep_fragment', bossLabel: '???',
+      bossDesc: '深海的信号在此交汇。碎片态的执念与遗落，会在遗憾成形前拦住你。',
       rooms: [
         { type: 'combat' },
         { type: 'branch', branchTypes: ['event', 'treasure'] },

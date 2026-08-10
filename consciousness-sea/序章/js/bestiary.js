@@ -101,6 +101,18 @@ const BESTIARY_ENEMY_DEFS = {
     desc: '遗憾本身的具现化。心为追忆，贵为遗失的珍宝——它已无法回头。',
     icon: '憾', iconColor: '#cc3322',
   },
+  'boss_regret_abyss': {
+    id: 'boss_regret_abyss', name: '憾·碎片',
+    category: 'Boss',
+    desc: '遗憾的碎片态。执念在深海中膨胀，尚未与「遗」合为一体。',
+    icon: '憾', iconColor: '#ff5544',
+  },
+  'boss_yi_abyss': {
+    id: 'boss_yi_abyss', name: '遗·碎片',
+    category: 'Boss',
+    desc: '遗憾的碎片态。遗落在深海的余音仍不肯散去，等待与「憾」重逢。',
+    icon: '遗', iconColor: '#ffcc44',
+  },
 };
 
 // 装备图鉴定义（从 config EQUIPMENT 动态生成，单一数据源，避免重复维护）

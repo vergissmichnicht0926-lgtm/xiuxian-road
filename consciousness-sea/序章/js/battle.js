@@ -578,7 +578,7 @@ function applyWeaponEffects() {
       e.timer = Math.min(e.timer + slowAmt, e.interval * 1.5);
       // 冰霜粒子
       if (Math.random() < 0.5) {
-        const fp = new HitParticle(e.entity.x, e.entity.y, '#99ccff', '❄');
+        const fp = new HitParticle(e.entity.x, e.entity.y, '#99ccff', '冰');
         fp.vx *= 0.3; fp.vy *= 0.3; fp.size = 6 + Math.random() * 8;
         fp.life = 15 + Math.random() * 15; fp.gravity = -0.03;
         particles.push(fp);
@@ -732,6 +732,10 @@ function enemyLaunchProjectiles(enemy) {
   } else if (type === 'track') {
     // aimed 签名是位置参数 (cx,cy,toX,toY,char,count,speed,color,damage,size,spreadAngle)
     projs = BulletPattern.aimed(cx, cy, mx, my, '·', 1, 3.2, '#aa77ff', dmg, 14, 0);
+    // 些微追踪：飞行中缓慢 re-aim 向玩家（turnRate 低，走位可甩开）
+    if (projs && projs.length) {
+      for (const p of projs) p._homing = { speed: 3.2, turnRate: 1.2 };
+    }
   }
   enemyProjectiles.push(...projs);
   Sound.enemyAtk();
@@ -1000,7 +1004,7 @@ function triggerSkill() {
       if (e.alive) e.timer = Math.min(e.interval, e.timer + playerSkill.freezeDuration);
     }
     syncEnemyCompat();
-    for(let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'❄'));
+    for(let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'冰'));
     particles.push(new DamageText(W*0.5,H*0.25,'砸瓦鲁多!',cfg.color));
     Sound.boost();
   }
@@ -1011,7 +1015,7 @@ function triggerSkill() {
     const dmg = 25 + 12 * g;   // 37 → 97
     const cost = 4 + 2 * g;    // 6 → 16
     dealSkillDamage(dmg, true);
-    for(let i=0;i<30;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'🔥'));
+    for(let i=0;i<30;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'火'));
     particles.push(new DamageText(W*0.5,H*0.3,`八门遁甲·${EIGHT_GATES_NAMES[g-1]}!`,cfg.color));
     Sound.anomaly();
     // 代价：自损（无视防御/护盾，与伤害语义一致）
@@ -1023,7 +1027,7 @@ function triggerSkill() {
   // 广智救我：火棍横扫全场
   if(playerSkill.effect==='guangzhi'){
     dealSkillDamage(25, true);
-    for(let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'🔥'));
+    for(let i=0;i<20;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'火'));
     particles.push(new DamageText(W*0.5,H*0.3,'广智救我!',cfg.color));
     Sound.boost();
   }
@@ -1059,7 +1063,7 @@ function triggerSkill() {
         syncEnemyCompat();
         updateEnemyUI();
       }
-      for(let i=0;i<25;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'⚡'));
+      for(let i=0;i<25;i++) particles.push(new HitParticle(W*0.5,H*0.3,cfg.color,'电'));
       particles.push(new DamageText(W*0.5,H*0.3,'超电磁炮!',cfg.color));
       Sound.comboMilestone(6);
     }

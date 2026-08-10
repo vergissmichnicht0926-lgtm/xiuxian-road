@@ -1571,18 +1571,56 @@ function startBossRoom(room) {
   const rc = bc ? bc.right.char : '';
   const lcDesc = lc ? (lc + '与' + rc) : '巨大汉字';
 
-  // 入场对话（第一章肉鸽零不在 → 男主独白）
+  // 入场对话（第一章肉鸽零不在 → 男主独白/环境叙事）
   const inCh1Boss = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
-  roomDialogueQueue = inCh1Boss ? [
-    { mode:'shake', speaker:'我', text:'……「' + bossName + '」。来了。' },
-  ] : [
-    { mode:'tremble', speaker:'零',
-      text:'来了。那个波形……就是它。「' + bossName + '」。' },
-    { mode:'plain',
-      text:'（前方的空间开始扭曲。两个汉字部件从黑暗中凝聚成形——' + lcDesc + '。）' },
-    { mode:'shake', speaker:'零',
-      text: lc ? (lc + '为意象，' + rc + '为执念……小心！！') : '……小心！！' },
-  ];
+  if (inCh1Boss) {
+    // 第3层遗憾完全体：先「???」→ 剧情揭示 → 遗憾登场
+    if (room.bossKey === 'regretful') {
+      roomDialogueQueue = [
+        { mode:'plain', text:'（深海的尽头，一片死寂。三个问号悬浮在黑暗中，微微脉动。）' },
+        { mode:'float', speaker:'我', text:'……？？？' },
+        { mode:'plain', text:'（零的能量在体内流转。有什么东西，在问号之后缓缓成形。）' },
+        { mode:'shake', speaker:'我', text:'遗憾。真的是你。' },
+      ];
+    } else {
+      // 忆/执/深层碎片态：按主题铺垫
+      const ch1Lead = {
+        recall: [
+          { mode:'plain', text:'（没有零。意识海面浮着细碎的光点——像被撕碎的记忆。）' },
+          { mode:'whisper', speaker:'我', text:'……这些，是我忘掉的东西吗。' },
+          { mode:'shake', speaker:'我', text:'「忆」。来了。' },
+        ],
+        obsess: [
+          { mode:'plain', text:'（脚下的海水忽然变稠。有什么东西从深处伸出来，想攥住你。）' },
+          { mode:'whisper', speaker:'我', text:'放不下……就永远走不动。' },
+          { mode:'shake', speaker:'我', text:'「执」。来了。' },
+        ],
+        regret_abyss: [
+          { mode:'plain', text:'（一个偏旁与一个主体，在深海的暗流里膨胀成巨大的字形。）' },
+          { mode:'whisper', speaker:'我', text:'憾。它还没拼完整。' },
+          { mode:'shake', speaker:'我', text:'「憾」。来了。' },
+        ],
+        yi_abyss: [
+          { mode:'plain', text:'（金色的碎片在深海中回响，每一次闪光都像一句没说完的话。）' },
+          { mode:'whisper', speaker:'我', text:'遗。它还在等什么。' },
+          { mode:'shake', speaker:'我', text:'「遗」。来了。' },
+        ],
+      };
+      roomDialogueQueue = ch1Lead[room.bossKey] || [
+        { mode:'shake', speaker:'我', text:'……「' + bossName + '」。来了。' },
+      ];
+    }
+  } else {
+    // 序章：零引导
+    roomDialogueQueue = [
+      { mode:'tremble', speaker:'零',
+        text:'来了。那个波形……就是它。「' + bossName + '」。' },
+      { mode:'plain',
+        text:'（前方的空间开始扭曲。两个汉字部件从黑暗中凝聚成形——' + lcDesc + '。）' },
+      { mode:'shake', speaker:'零',
+        text: lc ? (lc + '为意象，' + rc + '为执念……小心！！') : '……小心！！' },
+    ];
+  }
 
   // BGM: Boss战（boss.js initBoss也会触发，这里提前切换）
   if (typeof Sound !== 'undefined' && Sound.playBGM) Sound.playBGM('boss', 1.5);

@@ -30,6 +30,8 @@ let prologueHanDefeated = false;  // 憾被击败标志
 let wasBossActive = false;        // 上一帧Boss状态（检测过渡）
 let _lastCanvasTransform = null;  // 画布缩放样式缓存（避免每帧重复写入）
 let lastBossKey = null;           // 当前/上一场Boss的key（用于重试）
+let bossEnergy = 0;               // 零能量碎片（通关收集要素 → Hub 回复零能量）
+let zeroReturnTriggered = false;  // 零能量满 → 第三层切换遗憾完全体并解锁结局
 
 // ── 自定义光标粒子 ──
 let cursorParticles = [];
@@ -522,9 +524,9 @@ function update(dt) {
   // ═══════════ 房间内容更新 ═══════════
   if (typeof updateRoomElements === 'function') updateRoomElements();
 
-  // ═══════════ 自定义光标：引力场/心锁拖拽鼠标 ═══════════
+  // ═══════════ 自定义光标：引力场/心锁/执念锁链拖拽鼠标 ═══════════
   const gravOn = bossActive && bossState && bossState._gravityActive;
-  const lockOn = bossActive && bossState && bossState._heartLock;
+  const lockOn = bossActive && bossState && (bossState._heartLock || (bossState._gripChain && bossState._gripChain.phase === 'locked'));
 
   if (gravOn) {
     const gx = W * 0.5, gy = H * 0.32;
@@ -539,7 +541,8 @@ function update(dt) {
   }
 
   if (lockOn) {
-    const lock = bossState._heartLock;
+    const lock = bossState._heartLock
+      || { anchorX: bossState._gripChain.anchorX, anchorY: bossState._gripChain.anchorY, radius: bossState._gripChain.radius };
     const dx = mx - lock.anchorX, dy = my - lock.anchorY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > lock.radius && dist > 0.01) {
@@ -1322,6 +1325,11 @@ canvas.addEventListener('click',e=>{
   if(ph===PHASE.BATTLE||ph.startsWith('tutorial_')){
     if(document.getElementById('stun-overlay').classList.contains('active')) return;
 
+    // Boss 专属机制可点节点（余音消除 / 断挣脱 / 放下取消）优先于词元
+    if (typeof bossActive !== 'undefined' && bossActive && typeof hitTestBossInteract === 'function') {
+      if (hitTestBossInteract(cx, cy)) return;
+    }
+
     // 优先匹配有用词元（包括技能字），噪点只在无其他命中时才触发
     let noiseHit = null;
     for(let bw of battleWords){
@@ -1442,6 +1450,8 @@ function saveGame() {
     permanentUpgrades: typeof permanentUpgrades !== 'undefined' ? permanentUpgrades : {},
     affection: Tutorial.affection,
     uniqueEventsDone: typeof uniqueEventsDone !== 'undefined' ? uniqueEventsDone.slice() : [],
+    bossEnergy: typeof bossEnergy !== 'undefined' ? bossEnergy : 0,
+    zeroReturnTriggered: typeof zeroReturnTriggered !== 'undefined' ? zeroReturnTriggered : false,
     achievements: typeof achievements !== 'undefined' ? achievements : {},
 
     // ── 游戏位置 ⭐ ──
@@ -1572,6 +1582,8 @@ function resumeFromSave(save) {
   if (typeof save.permanentUpgrades !== 'undefined' && typeof initPermanentUpgrades === 'function') initPermanentUpgrades(save.permanentUpgrades);
   if (typeof save.affection !== 'undefined') Tutorial.affection = save.affection;
   if (Array.isArray(save.uniqueEventsDone) && typeof uniqueEventsDone !== 'undefined') uniqueEventsDone = save.uniqueEventsDone;
+  if (typeof save.bossEnergy !== 'undefined' && typeof bossEnergy !== 'undefined') bossEnergy = save.bossEnergy;
+  if (typeof save.zeroReturnTriggered !== 'undefined') zeroReturnTriggered = save.zeroReturnTriggered;
   if (save.achievements && typeof achievements !== 'undefined') achievements = save.achievements;
 
   // ── 基础初始化 ──
@@ -2064,7 +2076,7 @@ function restartFromDefeat() {
     bossState = null;
     bossActive = false;
     const retryKey = lastBossKey || 'regret';
-    const bossName = retryKey === 'yi' ? '遗' : '憾';
+    const bossName = (typeof BOSS_CONFIG !== 'undefined' && BOSS_CONFIG[retryKey]) ? BOSS_CONFIG[retryKey].name : '憾';
     setTimeout(() => {
       initBoss(retryKey);
       Tutorial.enterPhase(PHASE.BATTLE);
