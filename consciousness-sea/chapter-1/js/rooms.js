@@ -78,7 +78,35 @@ function startRoom(room) {
     case 'boss':      startBossRoom(room); break;
     case 'safe_house':startSafeHouseRoom(room); break;
     case 'shop':      startShopRoom(room); break;
+    case 'echo_shadow': startEchoShadowRoom(room); break;
   }
+}
+
+// ═══════════════ 遗憾·装备残影房（第一章专属，上局死亡触发）═══════════════
+// 上一次失败的自己化作巨型「攻」字残影，守着你没带出去的东西。
+// 可选：直面（战斗，胜得强力残响buff）/ 绕开（放弃）
+let echoShadowBuff = null; // 本局残响buff {atkMult, shieldBonus}，击败残影获得
+let _echoShadowFightActive = false;
+
+function startEchoShadowRoom(room) {
+  const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
+  // 进场对话
+  roomDialogueQueue = inCh1 ? [
+    { mode:'plain', text:'（深海中，一道巨大的「攻」字虚影凝滞不动。它像一面镜子——映出你上次失败的样子。）' },
+    { mode:'float', speaker:'我', text:'……这是我，上一次留在这里的自己。', speed:36 },
+    { mode:'whisper', speaker:'我', text:'它在等。要不要，面对它？', speed:40 },
+  ] : [
+    { mode:'plain', text:'（一道巨大的「攻」字虚影。空气里残留着失败的气息。）' },
+  ];
+  // 生成选项（对话结束后 spawnEventOptions 会读取 currentEventScenario）
+  currentEventScenario = {
+    options: [
+      { text:'直面残影', action:'echo_shadow_fight', x:0, y:0 },
+      { text:'绕开它',   action:'echo_shadow_skip',  x:0, y:0 },
+    ],
+  };
+  eventResolved = false;
+  playRoomDialogue();
 }
 
 /** 每帧由 main.js 调用，返回 true 表示房间完成 */
@@ -110,6 +138,25 @@ function checkRoomComplete() {
       return !shopOpen && !Dialogue.active;
     case 'safe_house':
       return !Dialogue.active && roomDialogueIndex >= roomDialogueQueue.length;
+    case 'echo_shadow':
+      // 残影房：选项/战斗进行中未完成；残影敌人全灭且对话播完才算完成
+      if (eventOptionsActive) return false;
+      // 直面战斗：残影敌人全灭 → 结算残响buff（先结算再检查战斗标记）
+      if (_echoShadowFightActive && typeof enemyList !== 'undefined' && enemyList.length > 0
+          && enemyList.every(e => !e.alive)) {
+        _echoShadowFightActive = false;
+        echoShadowBuff = { atkMult: 0.15, shieldBonus: 10 };
+        if (typeof grantShards === 'function') grantShards(20, W*0.5, H*0.3);
+        if (typeof Sound !== 'undefined' && Sound.itemGet) Sound.itemGet();
+        roomDialogueIndex = 0;
+        roomDialogueQueue = [
+          { mode:'shake', speaker:'我', text:'（「攻」字崩碎成光。上一次失败的自己，在这一刻化作了你的力量。）' },
+          { mode:'float', speaker:'我', text:'残响已纳。再下深海，我比昨天强一点。', speed:36 },
+        ];
+        playRoomDialogue();
+      }
+      // 绕开（eventMonsterDefeated=true）或战斗结束（对话播完）才算完成
+      return !_echoShadowFightActive && !Dialogue.active && roomDialogueIndex >= roomDialogueQueue.length;
     default:
       return true;
   }
@@ -1097,7 +1144,7 @@ function markUniqueEventDone(id) {
 }
 
 // ═══════════════ 技能传承事件（第一章低概率：获得未拥有技能，单局不重复、不可升级）═══
-const INHERIT_SKILL_IDS = ['eight_gates', 'kamehameha', 'guangzhi', 'jinitaimei', 'railgun'];
+// ⚠️ INHERIT_SKILL_IDS 已上移到 config.js（vm 测试需读），此处引用不重复定义
 let skillInheritGiven = [];   // 本局已 offer 过的技能（防读档刷）
 let skillInheritOffer = null; // 本次事件要给的技能 key
 
@@ -1121,6 +1168,61 @@ function buildSkillInheritScenario(key) {
       { text:'让心法沉入海底', action:'skill_inherit_leave' },
     ],
   };
+}
+
+/** 遗憾·装备残影选择：直面（战斗） / 绕开 */
+function handleEchoShadowChoice(opt) {
+  if (opt.action === 'echo_shadow_fight') {
+    // 直面残影：生成巨型「攻」字残影敌人（血量略少，可选挑战）
+    _echoShadowFightActive = true;
+    eventMonsterDefeated = false;
+    eventMonsterWaves = 1;
+    eventMonsterReward = { _echoShadowBuff: true }; // 标记：击败后给残响buff而非武器
+    // 生成单敌「攻」字（用 enemyHP 标量驱动兼容层，spawnEnemyFormation 写 enemyList）
+    enemyHP = enemyMaxHP = 400;          // 略少血量（可选挑战）
+    enemyTimer = enemyInterval = 3.0;
+    if (typeof spawnEnemyFormation === 'function') {
+      spawnEnemyFormation(false, 'bash', { count: 1, formation: 'line', hp: 400, interval: 3.0 });
+    } else if (typeof spawnEnemyEntity === 'function') {
+      spawnEnemyEntity(false, 'bash');
+    }
+    // 标记残影敌人：巨型「攻」字渲染（battle.js 检测）
+    if (typeof enemyList !== 'undefined') {
+      for (const e of enemyList) {
+        if (e.entity) {
+          e.entity._echoShadow = true;
+          e.entity.char = '攻';
+          e.entity.color = '#ff5544';
+          e.entity.glow = '#ff3322';
+          e.entity.size = 60; // 本体大字
+        }
+      }
+    }
+    if (typeof Tutorial !== 'undefined') Tutorial.enterPhase(PHASE.BATTLE);
+    const enemyNameEl = document.getElementById('enemy-name');
+    if (enemyNameEl) enemyNameEl.textContent = '残影 · 「攻」';
+    const stageHint = document.getElementById('stage-hint');
+    if (stageHint) { stageHint.style.opacity = '1'; stageHint.textContent = '击败残影，获得残响的力量！'; }
+    if (typeof balanceWords === 'function') balanceWords();
+    roomDialogueIndex = 0;
+    roomDialogueQueue = [
+      { mode:'shake', speaker:'我', text:'（巨大的「攻」字朝你压来——那是上一次失败的你，在向你挥刀。）' },
+    ];
+    playRoomDialogue();
+  } else {
+    // 绕开：威胁-1 + 少量碎片，直接完成
+    _echoShadowFightActive = false;
+    if (typeof threatLevel !== 'undefined') threatLevel = Math.max(0, threatLevel - 1);
+    if (typeof grantShards === 'function') grantShards(SHARD_REWARDS.EVENT_SKIP, W*0.5, H*0.5);
+    eventMonsterDefeated = true;
+    eventMonsterWaves = 0;
+    eventMonsterReward = null;
+    roomDialogueIndex = 0;
+    roomDialogueQueue = [
+      { mode:'float', speaker:'我', text:'（你转身离开。身后的「攻」字没有追来——它也明白，有些失败不必重来。）' },
+    ];
+    playRoomDialogue();
+  }
 }
 
 function handleSkillInheritChoice(opt) {
@@ -1327,6 +1429,9 @@ function handleEventChoice(opt) {
   } else if (opt.action === 'echo_deal' || opt.action === 'echo_altar' || opt.action === 'echo_trade') {
     // 代价换遗响（水镜 / 锚点祭坛 / 回声漩涡）
     handleEchoEventChoice(opt);
+  } else if (opt.action === 'echo_shadow_fight' || opt.action === 'echo_shadow_skip') {
+    // 遗憾·装备残影：直面（战斗）/ 绕开
+    handleEchoShadowChoice(opt);
   } else if (opt.action === 'skill_inherit_accept' || opt.action === 'skill_inherit_leave') {
     // 技能传承：接受替换技能 / 离开
     handleSkillInheritChoice(opt);
@@ -1520,7 +1625,9 @@ function checkEventMonster() {
   // 守卫：必须 eventResolved（怪物被实际生成过），防止上一房间残留 enemyHP=0 误触发
   if (!eventResolved || eventMonsterDefeated || eventMonsterWavePending) return;
 
-  if (enemyHP <= 0 && eventMonsterReward === null) {
+  // 残影战：eventMonsterReward 为 {_echoShadowBuff} 标记（非武器），也走完成判定
+  const isEchoShadow = eventMonsterReward && eventMonsterReward._echoShadowBuff;
+  if (enemyHP <= 0 && (eventMonsterReward === null || isEchoShadow)) {
     eventMonsterWaves--;
     if (eventMonsterWaves > 0) {
       // 启动帧计数过渡（~60帧 ≈ 1秒）
@@ -1529,7 +1636,19 @@ function checkEventMonster() {
       // 全部波次完成 → 结算奖励
       eventMonsterDefeated = true;
       if (typeof battleWords !== 'undefined') battleWords = [];
-      if (eventStormReward) {
+      if (isEchoShadow) {
+        // 残响 buff：全伤害+15%、护盾上限+10（本局有效）
+        echoShadowBuff = { atkMult: 0.15, shieldBonus: 10 };
+        _echoShadowFightActive = false;
+        if (typeof grantShards === 'function') grantShards(20, W*0.5, H*0.3);
+        if (typeof Sound !== 'undefined' && Sound.itemGet) Sound.itemGet();
+        roomDialogueIndex = 0;
+        roomDialogueQueue = [
+          { mode:'shake', speaker:'我', text:'（「攻」字崩碎成光。上一次失败的自己，在这一刻化作了你的力量。）' },
+          { mode:'float', speaker:'我', text:'残响已纳。再下深海，我比昨天强一点。', speed:36 },
+        ];
+        playRoomDialogue();
+      } else if (eventStormReward) {
         // 记忆风暴奖励：60 碎片 + 随机遗响
         eventStormReward = false;
         if (typeof grantShards === 'function') grantShards(60, W*0.5, H*0.3);
@@ -1657,10 +1776,22 @@ function startSafeHouseRoom(room) {
   }
 
   const inCh1 = typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap;
-  roomDialogueQueue = inCh1 ? [
-    { mode:'plain', text:'（零的领域。零的投影虚弱得无法凝形，只剩一缕微光。）' },
-    { mode:'whisper', speaker:'我', text:'……再撑一下。我一定会找到你。' },
+  const ch1Ending = inCh1 && typeof zeroReturnTriggered !== 'undefined' && zeroReturnTriggered && !energyReturned;
+  roomDialogueQueue = inCh1 ? (ch1Ending ? [
+    // 结局通关（能量已满未交还）：零能凝出实形了
+    { mode:'plain', text:'（零的领域。这一次，零的投影不再是飘忽的虚影——它凝出了清晰的轮廓。）' },
+    { mode:'float', speaker:'零', text:'……你带回来的能量，够我凝出一点实形了。', speed:38 },
+    { mode:'whisper', speaker:'我', text:'（停下脚步）你看起来……不一样了。', speed:40 },
+    { mode:'float', speaker:'零', text:'是能量的缘故。还差一点，就能完全回到你身边。', speed:36 },
+    { mode:'whisper', speaker:'我', text:'那，下次我下得更深。', speed:40 },
+    { mode:'float', speaker:'零', text:'嗯。这次，我陪你。', speed:36 },
   ] : [
+    // 普通通关：零的回应 + 男主察觉更深处的呼唤
+    { mode:'plain', text:'（零的领域。零的投影虚弱得无法凝形，只剩一缕微光。）' },
+    { mode:'whisper', speaker:'零', text:'……你回来了。辛苦你了。碎片我收好了。', speed:40 },
+    { mode:'float', speaker:'零', text:'下次，去更深处看看。', speed:36 },
+    { mode:'whisper', speaker:'我', text:'再深的地方……好像有一个很熟悉的声音，在叫我的名字。', speed:40 },
+  ]) : [
     { mode:'plain',
       text:'（温暖的光。四周是由文字粒子编织的墙壁，柔软得像母亲的怀抱。）' },
     { mode:'plain',

@@ -35,17 +35,17 @@ const EQUIPMENT = {
     'blaze_heaven': {
       id:'blaze_heaven', name:'焚天',
       words:['焚','爆','燃','灼','炎','烧','焰'], color:'#ff7744', glow:'#ee5522',
-      damage:5, wordCount:7, blaze:true, targetMode:'single', desc:'攻字7枚满屏烈焰，低伤高频，「炎」debuff灼烧。'
+      damage:5, wordCount:7, blaze:true, targetMode:'single', school:'blaze', desc:'攻字7枚满屏烈焰，低伤高频，「炎」debuff灼烧。'
     },
     'frost_verse': {
       id:'frost_verse', name:'霜序',
       words:['刺','穿','凝','碎','寒','封'], color:'#99ccff', glow:'#4488bb',
-      damage:7, wordCount:6, slow:true, targetMode:'single', desc:'攻字6枚凝寒而生，附带减速，控场致胜。'
+      damage:7, wordCount:6, slow:true, targetMode:'single', school:'frost', desc:'攻字6枚凝寒而生，附带减速，控场致胜。'
     },
     'thunder_strike': {
       id:'thunder_strike', name:'惊雷',
       words:['雷','霆','震','轰','电','霹'], color:'#ffdd44', glow:'#bbaa22',
-      damage:6, wordCount:6, targetMode:'aoe', desc:'攻字6枚牵动天雷——AOE武器，伤害倾泻至场上所有敌人。'
+      damage:6, wordCount:6, targetMode:'aoe', school:'storm', desc:'攻字6枚牵动天雷——AOE武器，伤害倾泻至场上所有敌人。'
     },
     'pierce_lance': {
       id:'pierce_lance', name:'贯日',
@@ -156,12 +156,6 @@ const EQUIPMENT = {
       wordCount:2, healMin:4, healMax:7,
       desc:'符字×2，点击回复4~7点。均衡稳定，入门首选。'
     },
-    'nectar_charm': {
-      id:'nectar_charm', name:'甘露符',
-      words:['甘','露'], color:'#44ddcc', glow:'#228866',
-      wordCount:1, healMin:12, healMax:18,
-      desc:'符字×1，低频但大额回复12~18点。危急时刻的救赎。'
-    },
     'ward_charm': {
       id:'ward_charm', name:'护身符',
       words:['护','身'], color:'#ddaa66', glow:'#886622',
@@ -210,6 +204,21 @@ const RUN_REWARDS = {
   PER_BOSS: 10,            // 每击败一个 Boss +10
 };
 
+// ═══════════════ 属性流派（SCHOOL） ═══════════════
+// 同流派 ≥2/≥3 件（武器/遗响/武器buff 计件）给温和协同加成，数值刻意低于单个稀有遗响量级，
+// 让混搭流不被压过。计件规则见 echo.js schoolCount()。显示层读 SCHOOLS[key] 画流派标签。
+const SCHOOLS = {
+  blaze: { name:'炎火', icon:'炎', color:'#ff7744', glow:'#ee5522',
+    synergy2: { blazeBonus:5,  blazeDmgMult:0.5 },
+    synergy3: { blazeBonus:10, blazeDmgMult:1.0 } },
+  frost: { name:'寒冰', icon:'冰', color:'#99ccff', glow:'#4488bb',
+    synergy2: { slowBonus:0.1 },
+    synergy3: { slowBonus:0.2, enemyIntervalUp:0.3 } },
+  storm: { name:'雷电', icon:'雷', color:'#ffdd44', glow:'#bbaa22',
+    synergy2: { aoeDmgMult:0.10 },
+    synergy3: { aoeDmgMult:0.15, chainSplash:0.10 } },
+};
+
 // ═══════════════ 武器 Buff 池 ═══════════════
 // 深层（遗憾段）掉落的武器有概率天生携带 1 个随机 buff，绑定 weaponBuffs[weaponId]。
 // 融合只升数值、不产生 buff（解耦）。全部配合多敌人战斗。
@@ -219,7 +228,7 @@ const WEAPON_BUFFS = {
   execute: { name:'处刑',  desc:'对20%血以下敌人伤害翻倍',          color:'#ff6666' },
   leech:   { name:'汲取',  desc:'伤害的15%转化为回复',              color:'#66ffaa' },
   focus:   { name:'专注',  desc:'连续命中同一目标伤害递增(最多5层)', color:'#ffcc66' },
-  tempest: { name:'风暴',  desc:'AOE命中时伤害提升30%',             color:'#88ccff' },
+  tempest: { name:'风暴',  desc:'AOE命中时伤害提升30%',             color:'#88ccff', school:'storm' },
 };
 
 // 干扰虚词
@@ -308,7 +317,6 @@ const SHOP_CATALOG = {
   },
   talismans: {
     'vitality_charm': 100,
-    'nectar_charm': 150,
     'ward_charm': 120,
     'serenity_charm': 110,
     'storm_charm': 130,
@@ -352,6 +360,10 @@ const PERMANENT_UPGRADES = {
     icon:'⚡',
   },
 };
+
+// 传承技能白名单（第一章事件/工坊「传承共鸣」渠道获得，不进商店基础货架）
+// 上移到 config.js 供 vm 测试脚本读（_equip_fusion_check 价目断言需跳过这批）
+const INHERIT_SKILL_IDS = ['eight_gates', 'kamehameha', 'guangzhi', 'jinitaimei', 'railgun'];
 
 // 教程阶段枚举
 const PHASE = {
@@ -421,6 +433,80 @@ const HUB_FIRST_DIVE_STORY = [
   { mode:'float', speaker:'小萤', text:'我虽然刚醒，但还能做点事情。这些基础的装备先给你——别嫌弃！', speed:32 },
   { mode:'float', speaker:'小萤', text:'好了！这样你就不至于赤手空拳了。', speed:33 },
   { mode:'bounce', speaker:'小萤', text:'去吧——主人！我在这里等你回来！', speed:28 },
+];
+
+// ═══════════════ 第一章 Hub 一次性小剧情（成功通关归来时触发） ═══════════════
+// 小萤人设：绝对客观的辅助AI → 因绝对客观产生"在场观众"的幻觉，会对着不存在的观众唠家常
+// （死侍式破第四面墙），但从不对任何人承认"观众"的存在。男主问起只圆场"自言自语/嘴瓢/默背规程"。
+// 触发：男主成功通关（showRunSummary(true)）返回 Hub 时，按 ch1SkitsDone 顺序逐个触发一次。
+const CH1_SKITS = [
+  {
+    id: 'skit_01',
+    lines: [
+      { mode:'float', speaker:'零', text:'……回来了。完整地回来了。', speed:38 },
+      { mode:'whisper', speaker:'我', text:'（愣了一下）你……在担心我？', speed:40 },
+      { mode:'float', speaker:'零', text:'（别开视线）只是不想再养一个残废的潜航者。去休息吧。', speed:36 },
+      { mode:'plain', text:'（小萤飘过来，看看你，又看看零，忽然冲着某片虚空轻轻「噗」地笑了一下，若无其事地转回来。）', speed:42 },
+      { mode:'float', speaker:'小萤', text:'哎，主人回来啦。这次没缺胳膊少腿，挺好。', speed:30 },
+      { mode:'whisper', speaker:'小萤', text:'（凑近，用只有你能听见的声音）跟你说——零姐姐刚才搁那儿，好几秒才接话。你懂我意思吧？', speed:34 },
+      { mode:'whisper', speaker:'我', text:'……什么？', speed:42 },
+      { mode:'float', speaker:'小萤', text:'没什么没什么。当我没说。', speed:30 },
+      { mode:'whisper', speaker:'小萤', text:'（最后半句，是对着虚空说的）某些人心里有数就行。', speed:32 },
+    ],
+  },
+  {
+    id: 'skit_02',
+    lines: [
+      { mode:'float', speaker:'小萤', text:'对了主人，一直没好好说过——我叫小萤，UCBR-AUX-07，就这片儿最小的辅助AI。', speed:30 },
+      { mode:'whisper', speaker:'我', text:'那平时怎么都不见你说话？', speed:40 },
+      { mode:'float', speaker:'小萤', text:'害，话多招人嫌。再说——光顾着干活了。', speed:32 },
+      { mode:'float', speaker:'小萤', text:'你看我这菜单——「图鉴」，你在海里碰到的所有东西我都记着；「工坊」，拿灵魂结晶能强化意识；「成就」，五个Boss打过了都有章。', speed:30 },
+      { mode:'whisper', speaker:'我', text:'……还挺全。', speed:40 },
+      { mode:'bounce', speaker:'小萤', text:'那可不！还有——', speed:30 },
+      { mode:'whisper', speaker:'小萤', text:'（压低声音）你要是攒到什么「能量」的东西，拿回来给我。我能帮你，把它还给零姐姐。', speed:34 },
+      { mode:'float', speaker:'零', text:'（远处）小萤。你在跟谁说话？', speed:38 },
+      { mode:'bounce', speaker:'小萤', text:'没有啊！我自言自语呢！……我这人就这样，你让让我。', speed:30 },
+      { mode:'whisper', speaker:'小萤', text:'（朝你挤挤眼，做了个「保密」的口型）', speed:34 },
+    ],
+  },
+  {
+    id: 'skit_03',
+    lines: [
+      { mode:'plain', text:'（零在角落对虚空发呆。）', speed:42 },
+      { mode:'whisper', speaker:'我', text:'……你在看什么？', speed:40 },
+      { mode:'float', speaker:'零', text:'（回过神）没什么。深海待久了，偶尔想看看「活着的东西」。你的脚步声，算一个。', speed:38 },
+      { mode:'plain', text:'（小萤从旁边飘过，随口接了一句。）', speed:42 },
+      { mode:'float', speaker:'小萤', text:'哦——对对对，脚步声。主人你是不知道，你每回出门，零姐姐都在门口干站着数数儿。一、二、三……我数过，数到十，你才走远。', speed:32 },
+      { mode:'float', speaker:'零', text:'……小萤。', speed:36 },
+      { mode:'bounce', speaker:'小萤', text:'诶？我说了吗？——我什么都没说。嘴瓢了嘴瓢了。', speed:30 },
+      { mode:'whisper', speaker:'小萤', text:'（她做了个拉链封嘴的动作，嘴角却压不住地翘着）', speed:34 },
+    ],
+  },
+  {
+    id: 'skit_04',
+    lines: [
+      { mode:'float', speaker:'零', text:'这次潜航，有没有看到一个叫「渡」的存在？意识商人，用记忆换东西。遇到他，离远一点。他欠我一笔账，也欠你一笔。', speed:36 },
+      { mode:'whisper', speaker:'我', text:'欠我？', speed:40 },
+      { mode:'float', speaker:'零', text:'以后你会知道。', speed:38 },
+      { mode:'plain', text:'（小萤在旁边小声嘀咕，像自言自语。）', speed:42 },
+      { mode:'whisper', speaker:'小萤', text:'这个坑挖得……行吧，够深。我慢慢等它填。', speed:34 },
+      { mode:'whisper', speaker:'我', text:'你又在自言自语什么？', speed:40 },
+      { mode:'bounce', speaker:'小萤', text:'啊？我说话了吗？——我在默背操作规程呢。你们聊，你们聊。', speed:32 },
+      { mode:'whisper', speaker:'小萤', text:'（飘走两步，又回头，对虚空轻声）记着呢，这条我记着呢。', speed:34 },
+    ],
+  },
+  {
+    id: 'skit_05',
+    lines: [
+      { mode:'float', speaker:'小萤', text:'主人，我跟你说个事儿——零姐姐吧，你回来的时候，她那投影明显亮一截。平时跟别人说话，都没这反应。', speed:32 },
+      { mode:'float', speaker:'零', text:'小萤，你适可而止。', speed:36 },
+      { mode:'bounce', speaker:'小萤', text:'你看，急眼了不是。我还没上数据呢——「投影亮度 +0.3%，话量 +12%」，这可是我一行一行记下来的。', speed:30 },
+      { mode:'plain', text:'（零的投影波动了一下，没再说话。）', speed:42 },
+      { mode:'float', speaker:'小萤', text:'行行行，我不说了。反正——', speed:32 },
+      { mode:'whisper', speaker:'小萤', text:'（朝你偏了偏头，压低声音）这话我说给你听的，她听不见。你别辜负我，也别辜负她。', speed:34 },
+      { mode:'whisper', speaker:'小萤', text:'（飘走前，她对着虚空，轻声补了一句）这集就到这儿吧。下一集，看你们的了。', speed:36 },
+    ],
+  },
 ];
 
 // ═══════════════ 肉鸽地图房间池 ═══════════════

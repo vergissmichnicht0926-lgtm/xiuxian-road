@@ -423,3 +423,56 @@ canvas { display:block; position:absolute; top:0; left:0; z-index:10; transition
   .ps-item { padding:10px 12px; }
   #enemy-name { font-size:15px; }
 }
+
+/* ── 结局 CG 演出层 ── */
+#cg-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: #000; overflow: hidden;
+}
+#cg-overlay.hidden { display: none; }
+#cg-image {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  transition: opacity 0.6s ease;
+}
+#cg-text {
+  position: absolute; bottom: 10%; left: 0; right: 0;
+  text-align: center; color: rgba(240,245,255,0.92);
+  font-family: "Noto Serif SC","SimSun",serif;
+  font-size: 22px; letter-spacing: 0.08em;
+  text-shadow: 0 0 12px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.8);
+  opacity: 0; transition: opacity 0.5s ease;
+  pointer-events: none; padding: 0 8%;
+}
+#cg-text.show { opacity: 1; }
+#cg-blink {
+  position: absolute; inset: 0; background: #000; opacity: 0;
+  transition: opacity 0.12s ease; pointer-events: none;
+}
+
+/* ── 拥抱零演出层 ── */
+#hug-overlay {
+  position: fixed; inset: 0; z-index: 2100;
+  background: radial-gradient(ellipse at center, rgba(40,55,80,0.35), rgba(5,8,15,0.95));
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 1.2s ease;
+}
+#hug-overlay.hidden { display: none; }
+#hug-overlay.show { opacity: 1; }
+#hug-scene {
+  font-family: "Noto Serif SC","SimSun",serif;
+  text-align: center; color: rgba(220,230,245,0.95);
+  text-shadow: 0 0 20px rgba(100,160,220,0.6);
+  font-size: 40px; letter-spacing: 0.3em;
+  margin-bottom: 6%;
+}
+#hug-text {
+  color: rgba(200,215,240,0.85);
+  font-family: "Noto Serif SC","SimSun",serif;
+  font-size: 18px; letter-spacing: 0.06em;
+  text-shadow: 0 0 10px rgba(0,0,0,0.8);
+  text-align: center; padding: 0 12%;
+  opacity: 0; transition: opacity 0.6s ease;
+  max-width: 700px; line-height: 1.8;
+}
+#hug-text.show { opacity: 1; }

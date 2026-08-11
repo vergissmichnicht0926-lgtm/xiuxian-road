@@ -1,0 +1,55 @@
+意识之海 · 结局演出 CG 提示词（v4 · 日系2D动漫画风 · 主人分镜）
+═══════════════════════════════════════════════
+用途：第一章结局演出（triggerZeroReturnCinematic）插入的 CG。
+风格：日系 2D 动漫画风（anime cel-shading / Japanese 2D anime）· 男主主视角（POV）· 谜语人分镜。
+角色：零=白毛女主（跨图一致）；男主=主视角（不画脸，只露手/桌面/屏幕）。
+工具：image2。画幅：16:9。
+
+分镜（4 张，报纸/照片/自语合并为一个连贯画面）：
+CG-1 争辩 → CG-2 放弃(黑屏切场) → CG-3 报纸与照片(深夜桌面：UCRB失败新闻+报纸下白发女孩照片+男主的手) → CG-4 颠倒的数字流
+
+───────────────
+〇、画风统一词组（每张图都必须包含，保证风格一致）
+───────────────
+Japanese 2D anime style, cel-shading, clean lineart, soft pastel color palette, anime background art, high quality anime illustration, galgame visual novel art style
+
+───────────────
+一、角色统一设定
+───────────────
+
+【零 · 白毛女主】形象稿
+Japanese 2D anime style, cel-shading, clean lineart. A young woman with very long flowing white-silver hair reaching her waist, pale porcelain skin, large pale blue-grey anime eyes, slender fragile build, gentle calm expression, wearing a plain grey-white coat over a simple dress, cool soft lighting, standing in a dark space, galgame visual novel art style, detailed, 16:9
+
+【男主 · 主视角】不用单独出形象稿——所有他的镜头都是第一人称 POV：
+只看到他的双手、桌面、键盘、屏幕反光，永远不出现脸。
+
+───────────────
+二、通用负面词（每张粘贴到 negative prompt）
+───────────────
+text, watermark, signature, extra fingers, distorted face, blurry, low quality, deformed hands, extra limbs, realistic, 3d render, photo
+
+───────────────
+三、六张 CG 详细提示词（每段完整可复制）
+───────────────
+
+■ CG-1「争辩」—— 主视角，被一群公司高管围住施压
+Japanese 2D anime style, cel-shading, clean lineart, soft pastel color palette, galgame visual novel art style. First-person point of view. You are seated at a long dark conference table, surrounded by several tall corporate executives in black suits standing around you, looming over the table. They are arguing intensely, some pointing fingers at you, some holding up documents. Their faces are partially in shadow, stern and accusing anime expressions. Your own hands are visible in the foreground, resting on the table, fingers slightly clenched. The table surface reflects harsh fluorescent office light. Scattered papers and a half-open folder in front of you. Overhead cold white office lighting, hard shadows, tense oppressive atmosphere, muted grey and dark blue color palette with a single warm desk lamp glow in the background. Anime background art, high quality anime illustration, 16:9
+
+■ CG-2「放弃」—— 主视角低头，一份协议推到你面前，手悬停
+Japanese 2D anime style, cel-shading, clean lineart, soft pastel color palette, galgame visual novel art style. First-person point of view. Same dark conference table. A corporate hand in a black suit pushes a formal agreement document toward you across the table; the paper has dense unreadable text and a signature line at the bottom. Your own hand hovers just above the signature line, fingers slightly trembling, not yet touching the pen. The executives' hands and the edges of their sleeves frame the corners of the image. Cold harsh overhead light, long shadows, the document is the brightest thing in frame. Desaturated cold tones, heavy defeated mood, silence and pressure. Anime background art, high quality anime illustration, shallow depth of field on the document, 16:9
+——（此后黑屏转场，由游戏演出控制）——
+
+■ CG-3「报纸与照片」—— 深夜桌面：报纸 UCRB 实验失败，报纸下露出白发女孩的照片，男主的手扶着报纸一角
+Japanese 2D anime style, cel-shading, clean lineart, soft pastel color palette, galgame visual novel art style. A single coherent scene, first-person point of view. An old wooden office desk at night, lit by a dim warm desk lamp from the left. A newspaper spread open across the desk; the masthead at the top clearly reads "UCRB" in bold letters, below it a large headline implying a failed experiment (headline text slightly blurred, a faded photo accompanying the article). At one corner, the newspaper is slightly lifted by your own hand in the foreground, revealing a small worn photograph hidden underneath — a young girl with very long flowing white-silver hair, pale skin, large pale blue-grey anime eyes, a gentle calm almost melancholic expression, the photo aged with small creases. The warm lamp light falls softly on the photo, making it glow against the cold desk, while your hand resting on the newspaper edge subtly shows a determined, weary grip. A chipped coffee cup with cold coffee at the corner, scattered pens. Melancholic, nostalgic, resolute late-night mood, warm light on cold scene. Anime background art, highly detailed, soft depth of field, 16:9
+
+■ CG-4「颠倒的数字流」—— 潜入意识海，数字与错误警告一切颠倒
+Japanese 2D anime style, cel-shading, clean lineart, soft pastel color palette, galgame visual novel art style. Surreal scene. A vast dark digital void filled with cascading streams of numbers, code fragments, and error warning symbols — but everything is inverted: the code streams fall upward instead of down, the horizon line is flipped, gravity seems reversed. The numbers and warnings are glitchy and unreadable, flickering in cyan and deep blue. In the far distance, the faint silhouette of the white-silver haired girl floats upside down, hair drifting in reverse, glowing faintly. The whole scene feels like falling into a digital sea, dizzying, dreamlike. Glitch effects, cool cyan-blue palette with sparse warm highlights, sense of free fall. Anime background art, highly detailed, surreal, 16:9
+
+───────────────
+四、出图建议
+───────────────
+- 每张完整粘贴整段（含全部细节 + 画风词组），不要删减。
+- image2 若对文字敏感，可把 "UCRB" 保留（刊头要可读），其余文字（标题/代码/字幕）设计为模糊不可读——谜语人不给全信息。
+- 男主 POV 靠 "your own hands / first-person point of view" 实现，勿加任何脸部描述。
+- 零白毛特征 "very long flowing white-silver hair, large pale blue-grey anime eyes" 每张保持一致。
+- 统一 16:9。负面词必加（含 realistic/3d render/photo 排除非2D）。

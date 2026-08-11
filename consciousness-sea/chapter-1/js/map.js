@@ -83,6 +83,17 @@ function generateRoguelikeMap() {
   dynamicSegments = []; // 记录层段边界（分屏显示）
   template.segments.forEach(seg => {
     const segStart = nextLayer;
+    // ⚠️ 遗憾·装备残影房：上局死亡 → 第三层（deep_fragment）50% 概率插入可选残影遭遇战
+    // 「攻」字残影守着你上局没能带出去的东西，直面可获强力 buff
+    if (seg.bossKey === 'deep_fragment'
+        && typeof lastRunDied !== 'undefined' && lastRunDied
+        && Math.random() < 0.5) {
+      rooms.push({
+        id: genId('echo_shadow'), type: 'echo_shadow', label: '残影',
+        layer: nextLayer, desc: '上一次失败的自己，还留在这片深海里。',
+      });
+      nextLayer++;
+    }
     // 段内普通房
     seg.rooms.forEach(rd => {
       if (rd.type === 'branch') {
@@ -347,10 +358,11 @@ function enterRoom(roomId) {
 
     const room = _getRoomData().find(r => r.id === roomId);
     if (room && typeof startRoom === 'function') {
-      // 根据层级更新威胁等级
+      // 根据层级更新威胁等级（工坊「深海抗性」按 rate 放缓层增长）
       if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined' && room.layer) {
         const baseThreat = THREAT.BASE[difficulty] || 2;
-        threatLevel = Math.min(10, baseThreat + (room.layer - 1) * THREAT.PER_LAYER);
+        const rate = (typeof getThreatGrowthRate === 'function') ? getThreatGrowthRate() : 1;
+        threatLevel = Math.min(10, baseThreat + (room.layer - 1) * THREAT.PER_LAYER * rate);
       }
       startRoom(room);
     }
@@ -359,8 +371,65 @@ function enterRoom(roomId) {
   return true;
 }
 
+// 层间过渡旁白（第一章肉鸽）：击败段末 Boss 进入下一层段时播放（追忆→执念→遗憾递进）
+const SEGMENT_TRANSITIONS = {
+  0: [
+    { mode:'plain', text:'（浅海安静下来。忆的余音还缠在耳朵里，但更深的地方，有什么在呼唤。）' },
+    { mode:'whisper', speaker:'我', text:'追忆到此为止。再往下，就是放不下的东西了。' },
+  ],
+  1: [
+    { mode:'plain', text:'（执念的锁链断在身后。可脚下的海，忽然变得格外沉重。）' },
+    { mode:'whisper', speaker:'我', text:'放不下……和遗憾，原来只有一步之遥。' },
+  ],
+};
+
+/** 播放层间过渡旁白（击败层末 Boss 后、回地图前），播完回调 */
+function playSegmentTransition(segIdx, onDone) {
+  const lines = (SEGMENT_TRANSITIONS && SEGMENT_TRANSITIONS[segIdx]) || null;
+  if (!lines || typeof Dialogue === 'undefined' || typeof isRoguelikeMap === 'undefined' || !isRoguelikeMap) {
+    if (typeof onDone === 'function') onDone();
+    return;
+  }
+  let idx = 0;
+  function playNext() {
+    if (idx >= lines.length) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    const d = lines[idx];
+    idx++;
+    Dialogue.show({ mode: d.mode || 'plain', speaker: d.speaker || '', text: d.text, speed: d.speed || 40 });
+  }
+  playNext();
+  if (_segTransTimer) clearInterval(_segTransTimer);
+  _segTransTimer = setInterval(() => {
+    if (typeof Dialogue !== 'undefined' && !Dialogue.active) {
+      if (idx < lines.length) playNext();
+      else { clearInterval(_segTransTimer); _segTransTimer = null; if (typeof onDone === 'function') onDone(); }
+    }
+  }, 200);
+}
+let _segTransTimer = null;
+
 /** 房间内容完成后回到地图 */
 function returnToMap(roomId) {
+  // ⚠️ 层间过渡：击败段末 Boss 进入下一层段前，先播旁白（完整房间逻辑走完后再回地图）
+  const doneRoom = _getRoomData().find(r => r.id === roomId);
+  if (doneRoom && doneRoom.type === 'boss' && typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap) {
+    const nextSeg = _currentSegmentIndex();
+    const trans = (SEGMENT_TRANSITIONS && SEGMENT_TRANSITIONS[nextSeg]) || null;
+    if (trans) {
+      playSegmentTransition(nextSeg, () => {
+        finishReturnToMap(roomId);
+      });
+      return;
+    }
+  }
+  finishReturnToMap(roomId);
+}
+
+/** returnToMap 的实际执行（层间过渡播完或无需过渡时调用） */
+function finishReturnToMap(roomId) {
   completeRoom(roomId);
 
   // 自动存档（每次回到地图时）

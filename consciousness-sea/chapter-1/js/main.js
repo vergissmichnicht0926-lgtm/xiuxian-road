@@ -32,6 +32,11 @@ let _lastCanvasTransform = null;  // 画布缩放样式缓存（避免每帧重�
 let lastBossKey = null;           // 当前/上一场Boss的key（用于重试）
 let bossEnergy = 0;               // 零能量碎片（通关收集要素 → Hub 回复零能量）
 let zeroReturnTriggered = false;  // 零能量满 → 第三层切换遗憾完全体并解锁结局
+let energyReturned = false;       // 能量已交还零（第一章结局演出已触发，防重复）
+let zeroSolidified = false;       // 零凝实态（恢复力量后形体更完整，Hub显示暖金实影）
+let _pendingHubSkit = false;      // 成功返回Hub时待触发的一次性小剧情标志（showRunSummary(true) 设置）
+let ch1SkitsDone = [];            // 已触发过的小剧情编号（存档持久化，一次性）
+let lastRunDied = false;          // 上一局肉鸽是否死亡（遗憾·装备残影房触发条件）
 
 // ── 自定义光标粒子 ──
 let cursorParticles = [];
@@ -360,7 +365,7 @@ function drawBackpackItems(ctx) {
           ctx.restore();
         });
 
-        // 描述（轨道下方）+ 武器buff + 熟练度
+        // 描述（轨道下方）+ 流派标签 + 武器buff + 熟练度
         if(item._orbitBurst>0.5 && cfg){
           ctx.save();
           ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.45;
@@ -369,14 +374,23 @@ function drawBackpackItems(ctx) {
           ctx.textAlign = 'center';
           ctx.fillText(cfg.desc||'', item.x, item.y + orbitR + 22);
           let extraLine = 40;
+          // 流派标签（武器/遗响）：一眼可辨所属流派 + 当前协同件数
+          if (cfg.school && typeof SCHOOLS !== 'undefined' && SCHOOLS[cfg.school] && typeof schoolCount === 'function') {
+            const s = SCHOOLS[cfg.school];
+            const n = schoolCount(cfg.school);
+            ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.85;
+            ctx.fillStyle = s.color || '#cccccc';
+            ctx.fillText(`【${s.icon}${s.name}】协同 ${n}/2`, item.x, item.y + orbitR + 40);
+            extraLine = 58;
+          }
           // 武器buff（深层掉落词缀）
           if (item.type === 'weapon' && typeof weaponBuffs !== 'undefined' && weaponBuffs[cfg.id]
               && typeof WEAPON_BUFFS !== 'undefined' && WEAPON_BUFFS[weaponBuffs[cfg.id]]) {
             const bd = WEAPON_BUFFS[weaponBuffs[cfg.id]];
             ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.7;
             ctx.fillStyle = bd.color || '#ffcc66';
-            ctx.fillText(`【${bd.name}】${bd.desc}`, item.x, item.y + orbitR + 40);
-            extraLine = 58;
+            ctx.fillText(`【${bd.name}】${bd.desc}`, item.x, item.y + orbitR + extraLine);
+            extraLine = 76;
           }
           // 熟练度（武器/防具/护符，非技能/货币/遗响）
           if ((item.type === 'weapon' || item.type === 'armor' || item.type === 'talisman') && typeof equipProficiency !== 'undefined') {
@@ -713,7 +727,9 @@ function update(dt) {
     blazeTimer -= dt;
     // 每秒造成灼烧伤害
     if (Math.floor(blazeTimer * 10) !== Math.floor((blazeTimer + dt) * 10)) {
-      const blazeDmg = Math.floor((playerWeapon ? playerWeapon.damage : 5) * 0.5);
+      // 炎流派协同：灼烧伤害加成（schoolMod 定义在 echo.js）
+      const blazeDmg = Math.floor((playerWeapon ? playerWeapon.damage : 5) * 0.5
+        * (1 + (typeof schoolMod==='function'?schoolMod('blazeDmgMult','blaze'):0)));
       if (bossActive && typeof damageBoss === 'function') {
         // Boss战：走damageBoss，复用20%逃跑/假撤退阈值与defeat判定（灼烧也能击杀Boss）
         if (bossState && bossState.hp > 0) damageBoss(blazeDmg, 1);
@@ -1305,6 +1321,11 @@ canvas.addEventListener('click',e=>{
     }
   }
 
+  // 优先：CG 演出点击推进（结局记忆分镜，玩家控制节奏）
+  if (_cgState && _cgState.phase === 'cg') {
+    advanceCGByClick();
+    return;
+  }
   // 优先：飘浮选择肢
   if(Tutorial._driftActive && Tutorial._driftSettled && !Tutorial._driftSelected){
     Tutorial.handleClick(); return;
@@ -1452,6 +1473,10 @@ function saveGame() {
     uniqueEventsDone: typeof uniqueEventsDone !== 'undefined' ? uniqueEventsDone.slice() : [],
     bossEnergy: typeof bossEnergy !== 'undefined' ? bossEnergy : 0,
     zeroReturnTriggered: typeof zeroReturnTriggered !== 'undefined' ? zeroReturnTriggered : false,
+    energyReturned: typeof energyReturned !== 'undefined' ? energyReturned : false,
+    zeroSolidified: typeof zeroSolidified !== 'undefined' ? zeroSolidified : false,
+    ch1SkitsDone: typeof ch1SkitsDone !== 'undefined' ? ch1SkitsDone.slice() : [],
+    lastRunDied: typeof lastRunDied !== 'undefined' ? lastRunDied : false,
     achievements: typeof achievements !== 'undefined' ? achievements : {},
 
     // ── 游戏位置 ⭐ ──
@@ -1463,6 +1488,7 @@ function saveGame() {
     inHub: typeof hubActive !== 'undefined' ? hubActive : false,
     hubRunNumber: typeof hubRunNumber !== 'undefined' ? hubRunNumber : 0,
     hubZeroTalkIndex: typeof hubZeroTalkIndex !== 'undefined' ? hubZeroTalkIndex : 0,
+    trioDepartureDone: typeof trioDepartureDone !== 'undefined' ? trioDepartureDone : false,
 
     // ── 装备（存ID，从EQUIPMENT恢复）──
     weaponId: playerWeapon ? playerWeapon.id : 'beginner_brush',
@@ -1470,9 +1496,8 @@ function saveGame() {
     skillId: playerSkill ? playerSkill.id : 'concentration',
     talismanId: playerTalisman ? playerTalisman.id : null,
 
-    // ── 装备强化（融合等级 + 武器buff，跨局持久化；unlockedArmors/Talismans 为局内不存）──
+    // ── 装备强化（融合等级 跨局持久化；武器buff weaponBuffs 已改为局内有效不存；unlockedArmors/Talismans 为局内不存）──
     equipmentLevels: typeof equipmentLevels !== 'undefined' ? equipmentLevels : {},
-    weaponBuffs: typeof weaponBuffs !== 'undefined' ? weaponBuffs : {},
     // ── 装备熟练度（开局随机池解锁进度，跨局持久化）──
     equipProficiency: typeof equipProficiency !== 'undefined' ? equipProficiency : {},
 
@@ -1572,9 +1597,8 @@ function resumeFromSave(save) {
   // ── 恢复永久数据 ──
   difficulty = save.difficulty || 1;
   if (save.unlockedWeapons) unlockedWeapons = new Set(save.unlockedWeapons);
-  // 装备强化（融合等级 + 武器buff）；旧档缺失默认空，向前兼容
+  // 装备强化（融合等级 跨局；武器buff 已改为局内有效不读档）
   if (typeof save.equipmentLevels !== 'undefined' && typeof equipmentLevels !== 'undefined') equipmentLevels = save.equipmentLevels;
-  if (typeof save.weaponBuffs !== 'undefined' && typeof weaponBuffs !== 'undefined') weaponBuffs = save.weaponBuffs;
   if (typeof save.equipProficiency !== 'undefined' && typeof equipProficiency !== 'undefined') equipProficiency = save.equipProficiency;
   if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合（每局重置）
   if (typeof save.threatLevel !== 'undefined' && typeof threatLevel !== 'undefined') threatLevel = save.threatLevel;
@@ -1584,6 +1608,10 @@ function resumeFromSave(save) {
   if (Array.isArray(save.uniqueEventsDone) && typeof uniqueEventsDone !== 'undefined') uniqueEventsDone = save.uniqueEventsDone;
   if (typeof save.bossEnergy !== 'undefined' && typeof bossEnergy !== 'undefined') bossEnergy = save.bossEnergy;
   if (typeof save.zeroReturnTriggered !== 'undefined') zeroReturnTriggered = save.zeroReturnTriggered;
+  if (typeof save.energyReturned !== 'undefined') energyReturned = save.energyReturned;
+  if (typeof save.zeroSolidified !== 'undefined') zeroSolidified = save.zeroSolidified;
+  if (Array.isArray(save.ch1SkitsDone) && typeof ch1SkitsDone !== 'undefined') ch1SkitsDone = save.ch1SkitsDone.slice();
+  if (typeof save.lastRunDied !== 'undefined') lastRunDied = save.lastRunDied;
   if (save.achievements && typeof achievements !== 'undefined') achievements = save.achievements;
 
   // ── 基础初始化 ──
@@ -1631,6 +1659,7 @@ function resumeFromSave(save) {
   // ── 恢复Hub状态 ──
   if (typeof save.hubRunNumber !== 'undefined' && typeof hubRunNumber !== 'undefined') hubRunNumber = save.hubRunNumber;
   if (typeof save.hubZeroTalkIndex !== 'undefined' && typeof hubZeroTalkIndex !== 'undefined') hubZeroTalkIndex = save.hubZeroTalkIndex;
+  if (typeof save.trioDepartureDone !== 'undefined') trioDepartureDone = save.trioDepartureDone;
 
   // ── 恢复肉鸽状态 ──
   if (save.isRoguelikeMap && typeof isRoguelikeMap !== 'undefined') isRoguelikeMap = true;
@@ -1904,6 +1933,332 @@ function showChapterCard(title, subtitle, hint, onclick) {
   };
 }
 
+// ── 第一章 Hub 一次性小剧情（成功通关归来触发）──
+// 小萤人设：绝对客观辅助AI → 幻觉"在场观众"，对幻想观众唠家常（死侍式破第四面墙）。
+// 成功通关（showRunSummary(true)）点「返回零的领域」→ setPendingHubSkit 置标 → enterHub 消费触发。
+let _hubSkitTimer = null;
+
+/** 成功通关返回前标记：待触发一次性小剧情 */
+function setPendingHubSkit() {
+  _pendingHubSkit = true;
+}
+
+/** 在 Hub 播放一段一次性小剧情对话池（按 skit 顺序，触发后记入 ch1SkitsDone 不再重复） */
+function playCh1Skit(skit) {
+  if (!skit || !skit.lines || !skit.lines.length) return;
+  if (typeof Dialogue === 'undefined') return;
+  let idx = 0;
+  const lines = skit.lines;
+  function playNext() {
+    if (idx >= lines.length) {
+      if (_hubSkitTimer) { clearInterval(_hubSkitTimer); _hubSkitTimer = null; }
+      // 小剧情播完 → 回 Hub 正常 idle
+      if (typeof hubPhase !== 'undefined') hubPhase = 'idle';
+      return;
+    }
+    const d = lines[idx];
+    idx++;
+    Dialogue.show({ mode: d.mode || 'float', speaker: d.speaker || '', text: d.text, speed: d.speed || 40 });
+  }
+  if (typeof hubPhase !== 'undefined') hubPhase = 'talking_zero'; // 复用零对话的推进逻辑
+  playNext();
+  if (_hubSkitTimer) clearInterval(_hubSkitTimer);
+  _hubSkitTimer = setInterval(() => {
+    if (typeof Dialogue !== 'undefined' && !Dialogue.active) {
+      if (idx < lines.length) playNext();
+      else { clearInterval(_hubSkitTimer); _hubSkitTimer = null; if (typeof hubPhase !== 'undefined') hubPhase = 'idle'; }
+    }
+  }, 200);
+}
+
+/** 检查并触发下一个待播放的一次性小剧情（enterHub 时调用；成功通关归来才置标） */
+function maybeTriggerCh1Skit() {
+  if (!_pendingHubSkit) return false;
+  if (typeof CH1_SKITS === 'undefined' || !CH1_SKITS.length) { _pendingHubSkit = false; return false; }
+  // 找第一个未触发的小剧情
+  const next = CH1_SKITS.find(s => !(typeof ch1SkitsDone !== 'undefined' && ch1SkitsDone.includes(s.id)));
+  if (!next) { _pendingHubSkit = false; return false; }
+  if (typeof ch1SkitsDone !== 'undefined') ch1SkitsDone.push(next.id);
+  if (typeof saveGame === 'function') saveGame();
+  _pendingHubSkit = false;
+  playCh1Skit(next);
+  return true;
+}
+
+// ── 第一章结局：把零能量交还给她（Hub 小萤菜单触发）──
+// 能量满（zeroReturnTriggered=true）后可交还 → 白房间演出 → 解锁实验记忆 → 引出第二章
+let _energyCinematicTimer = null;
+function returnZeroEnergy() {
+  if (energyReturned) return;              // 已演出过，防重复
+  if (!zeroReturnTriggered) {              // 能量未满：先给零一段"还差一点"的回应
+    if (typeof Dialogue !== 'undefined') Dialogue.show({
+      mode: 'float', speaker: '零',
+      text: `……我感觉到你的意识里攒着一些什么。还差一点，就能拼回我了。`,
+      speed: 40,
+    });
+    return;
+  }
+  energyReturned = true;
+  zeroSolidified = true;                   // 零凝实态
+  bossEnergy = 0;                          // 能量交还
+  if (typeof saveGame === 'function') saveGame();
+  // 图鉴解锁：白房间记忆（bestiary.js 数据已就绪）
+  if (typeof registerMemory === 'function') registerMemory('memory_white_room');
+  // 演出序列（Dialogue 队列推进）
+  triggerZeroReturnCinematic();
+}
+
+// 第一章结局演出：白房间 → 记忆CG分镜 → 倒放 → 眨眼 → 回零的领域拥抱零
+let _zeroCinematicStep = 0;
+let _cgState = null; // { phase:'cg'|'rewind'|'blink'|'hub', idx, timer }
+
+// CG 分镜数据（图片文件在 PICTURE/，16:9）——台词用对话体，不做旁白
+const CG_SEQUENCE = [
+  { img: 'PICTURE/cg1_debate.png', text: '「让她参加这种实验，你们疯了吗？！」\n「这是活人——不是数据样本！」' },
+  { img: 'PICTURE/cg2_giveup.png', text: '「看清楚，签了这个，你还是首席研究员。」\n「……不签的话呢？」\n「不签的话，今天就收拾东西。」' },
+  { img: 'PICTURE/cg3_news_photo.png', text: '「UCRB 意识回收实验……疑似失败。」\n「（照片上，白发的女孩安静地笑着。）\n……你就是她吗。」' },
+  { img: 'PICTURE/cg4_inverted.png', text: '「你等我。」\n「我一定会去救你。」' },
+];
+
+function triggerZeroReturnCinematic() {
+  if (typeof Cinematic !== 'undefined' && Cinematic.startTransition) {
+    Cinematic.startTransition('out', 1.0, null);
+  }
+  _zeroCinematicStep = 0;
+  const lines = [
+    { mode:'whisper', speaker:'???', text:'你来了。', speed:45 },
+    { mode:'whisper', speaker:'我', text:'……这是哪里？', speed:42 },
+    { mode:'float', speaker:'???', text:'你会忘掉一切。但你一定会找到她。', speed:42 },
+    { mode:'whisper', speaker:'我', text:'找到谁？你是谁？', speed:40 },
+    { mode:'shake', speaker:'???', text:'「实验」……以真人意识为样本的回收实验。你反对过的。', speed:35 },
+    { mode:'float', speaker:'我', text:'……公司。', speed:42 },
+    { mode:'whisper', speaker:'???', text:'你曾经坚决反对。你输了。', speed:40 },
+    { mode:'whisper', speaker:'我', text:'那她呢？那个……自愿参加的人。', speed:40 },
+    { mode:'plain', text:'（画面涌入——）', speed:42 },
+  ];
+  function playNext() {
+    if (_zeroCinematicStep >= lines.length) {
+      // 白房间对话结束 → 进入 CG 分镜演出
+      if (_energyCinematicTimer) { clearInterval(_energyCinematicTimer); _energyCinematicTimer = null; }
+      if (typeof Dialogue !== 'undefined') Dialogue.hide();
+      startCGSequence();
+      return;
+    }
+    const d = lines[_zeroCinematicStep];
+    _zeroCinematicStep++;
+    if (typeof Dialogue !== 'undefined') {
+      Dialogue.show({ mode: d.mode, speaker: d.speaker || '', text: d.text, speed: d.speed || 40 });
+    }
+  }
+  if (_energyCinematicTimer) clearInterval(_energyCinematicTimer);
+  _energyCinematicTimer = setInterval(() => {
+    if (typeof Dialogue === 'undefined' || !Dialogue.active) {
+      playNext();
+      if (_zeroCinematicStep > lines.length) {
+        clearInterval(_energyCinematicTimer);
+        _energyCinematicTimer = null;
+      }
+    }
+  }, 350);
+  playNext();
+}
+
+// ═══════════════ 结局 CG 演出 ═══════════════
+// 分镜：CG-1争辩 → CG-2放弃(黑屏切场) → CG-3报纸照片 → CG-4颠倒数字流
+// 播完 → 倒放回CG-1 → 眨眼(黑/灰屏) → 回零的领域 → 拥抱零
+let _cgTimer = null;
+function startCGSequence() {
+  const ov = document.getElementById('cg-overlay');
+  const img = document.getElementById('cg-image');
+  const txt = document.getElementById('cg-text');
+  if (!ov) { finishCGToHub(); return; }
+  ov.classList.remove('hidden');
+  // ⚠️ CG overlay 全屏固定定位会挡住 canvas 点击，需给 overlay 本身绑点击
+  ov.onclick = function() { advanceCGByClick(); };
+  _cgState = { phase: 'cg', idx: 0, timer: 0 };
+  showCGFrame(0);
+}
+
+// 玩家点击推进 CG（正序 1→4，第4张点击后进入倒放）
+function advanceCGByClick() {
+  if (!_cgState || _cgState.phase !== 'cg') return;
+  if (typeof Sound !== 'undefined' && Sound.dialogueAdvance) Sound.dialogueAdvance();
+  _cgState.idx++;
+  if (_cgState.idx >= CG_SEQUENCE.length) {
+    // CG 播完 → 倒放（自动）
+    startCGRewind();
+  } else {
+    showCGFrame(_cgState.idx);
+  }
+}
+
+function showCGFrame(idx) {
+  const img = document.getElementById('cg-image');
+  const txt = document.getElementById('cg-text');
+  if (!img) return;
+  const frame = CG_SEQUENCE[idx];
+  if (!frame) return;
+  img.style.backgroundImage = `url('${frame.img}')`;
+  // CG-2 黑屏切场：图片先淡出再进（模拟黑屏）
+  img.style.opacity = 0;
+  txt.classList.remove('show');
+  setTimeout(() => {
+    img.style.backgroundImage = `url('${frame.img}')`;
+    img.style.opacity = 1;
+    if (txt) { txt.textContent = frame.text; txt.classList.add('show'); }
+  }, idx === 1 ? 500 : 50);
+}
+
+// 倒放：从 CG-4 → CG-3 → CG-2 → CG-1（像放带子倒放）
+function startCGRewind() {
+  _cgState = { phase: 'rewind', idx: CG_SEQUENCE.length - 2, timer: 0 };
+  const txt = document.getElementById('cg-text');
+  if (txt) txt.classList.remove('show');
+  if (_cgTimer) clearInterval(_cgTimer);
+  _cgTimer = setInterval(() => {
+    if (!_cgState || _cgState.phase !== 'rewind') return;
+    _cgState.timer += 0.4;
+    if (_cgState.timer >= 0.6) {
+      _cgState.timer = 0;
+      _cgState.idx--;
+      if (_cgState.idx < 0) {
+        // 倒回 CG-1 完成 → 眨眼
+        startCGBlink();
+      } else {
+        showCGFrame(_cgState.idx);
+      }
+    }
+  }, 400);
+}
+
+// 眨眼：黑屏/灰屏快速闪动（模仿眨眼合眼）
+function startCGBlink() {
+  _cgState = { phase: 'blink', idx: 0, timer: 0 };
+  const blink = document.getElementById('cg-blink');
+  const ov = document.getElementById('cg-overlay');
+  const img = document.getElementById('cg-image');
+  if (_cgTimer) clearInterval(_cgTimer);
+  let blinkCount = 0;
+  function doBlink() {
+    if (!blink || !ov) { finishCGToHub(); return; }
+    // 闭眼（变暗）→ 睁眼（恢复）
+    if (blinkCount < 3) {
+      blink.style.opacity = 1;
+      setTimeout(() => {
+        blink.style.opacity = 0;
+        blinkCount++;
+        setTimeout(doBlink, 120);
+      }, 160);
+    } else {
+      // 眨眼结束 → 回零的领域
+      ov.classList.add('hidden');
+      if (img) img.style.opacity = 0;
+      finishCGToHub();
+    }
+  }
+  doBlink();
+}
+
+// CG 演出结束 → 回零的领域 + 拥抱零
+function finishCGToHub() {
+  _cgState = null;
+  if (_cgTimer) { clearInterval(_cgTimer); _cgTimer = null; }
+  const _ov = document.getElementById('cg-overlay');
+  if (_ov) _ov.onclick = null; // 清理 CG overlay 点击，防止残留
+  if (typeof Sound !== 'undefined' && Sound.stopBGM) Sound.stopBGM(3.0);
+  if (typeof Cinematic !== 'undefined' && Cinematic.startTransition) {
+    Cinematic.startTransition('in', 1.0, null);
+  }
+  // 回零的领域 → 拥抱零演出
+  setTimeout(() => { enterHub(); startHugCinematic(); }, 600);
+}
+
+// ═══════════════ 拥抱零演出（结局）═══════════════
+// 男主猜到了什么，但还不太确认。零凝实，他抱住她——然后松开，灰屏收尾。
+let _hugTimer = null;
+let _hugLineTimer = null;
+function startHugCinematic() {
+  const ov = document.getElementById('hug-overlay');
+  const scene = document.getElementById('hug-scene');
+  const txt = document.getElementById('hug-text');
+  if (!ov) return;
+  ov.classList.remove('hidden');
+  // ⚠️ hug-overlay 全屏会挡住 canvas 点击，需给 overlay 绑点击推进拥抱对话
+  ov.onclick = function() {
+    if (typeof Dialogue !== 'undefined' && Dialogue.active) {
+      if (Dialogue.complete) Dialogue.hide(); else Dialogue.skip();
+    }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(() => { ov.classList.add('show'); }));
+  if (scene) scene.textContent = '零';
+
+  // 对话式拥抱（用 Dialogue 引擎播放，点击推进）
+  const hugLines = [
+    { mode:'plain', text:'（零的投影不再透明。你张开了手，抱住了她。）', speed:42 },
+    { mode:'float', speaker:'零', text:'……突然是怎么了？', speed:36 },
+    { mode:'whisper', speaker:'我', text:'（顿了顿）没怎么。', speed:40 },
+    { mode:'plain', text:'（你慢慢地松开手。很小声地，对自己说了一句。）', speed:42 },
+    { mode:'whisper', speaker:'我', text:'……果然，是这样。', speed:36 },
+  ];
+  if (typeof Dialogue !== 'undefined' && txt) {
+    // 用对话系统逐句播放，最后一句播完 → 灰屏收尾
+    let idx = 0;
+    function playHugLine() {
+      if (idx >= hugLines.length) {
+        // 灰屏 → 第一章结束
+        showChapterEndScreen();
+        return;
+      }
+      const d = hugLines[idx];
+      idx++;
+      const isLast = idx >= hugLines.length;
+      Dialogue.show({
+        mode: d.mode, speaker: d.speaker || '', text: d.text, speed: d.speed || 40,
+        onComplete: () => { if (isLast) showChapterEndScreen(); },
+      });
+    }
+    if (_hugLineTimer) clearInterval(_hugLineTimer);
+    _hugLineTimer = setInterval(() => {
+      if (typeof Dialogue !== 'undefined' && !Dialogue.active) {
+        playHugLine();
+        if (idx >= hugLines.length) {
+          clearInterval(_hugLineTimer);
+          _hugLineTimer = null;
+        }
+      }
+    }, 250);
+    playHugLine();
+  } else {
+    // 兜底：无对话系统直接灰屏
+    showChapterEndScreen();
+  }
+}
+
+// 第一章结束灰屏（拥抱对话播完后）
+function showChapterEndScreen() {
+  const ov = document.getElementById('hug-overlay');
+  const txt = document.getElementById('hug-text');
+  if (!ov) return;
+  // 灰屏过渡
+  ov.style.background = 'linear-gradient(180deg, #2a2a30, #1a1a20)';
+  if (txt) {
+    txt.classList.add('show');
+    txt.style.color = 'rgba(220,220,230,0.9)';
+    txt.textContent = '—— 第一章 · 深渊回声 · 完 ——';
+  }
+  // 停留后回到正常 Hub
+  if (_hugTimer) clearTimeout(_hugTimer);
+  _hugTimer = setTimeout(() => {
+    ov.classList.remove('show');
+    setTimeout(() => {
+      ov.classList.add('hidden');
+      ov.style.background = '';
+      ov.onclick = null; // 清理拥抱 overlay 点击
+      if (typeof Dialogue !== 'undefined') Dialogue.hide();
+    }, 1500);
+  }, 4000);
+}
+
 // ── 难度选择 → 章节卡 → 开始 ──
 function selectDifficulty(idx) {
   difficulty = idx;
@@ -1928,6 +2283,8 @@ function startPrologue() {
   if (typeof resetRunStats === 'function') resetRunStats();          // 新档重置本局统计
   uniqueEventsDone = []; // 新档重置独特事件标记
   achievements = {}; // 新档重置成就（成就进主存档，随新档清空）
+  lastRunDied = false; // 新档重置上局死亡标记
+  zeroSolidified = false; // 新档重置零凝实态
   if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合
   // 应用永久升级（新游戏时为空，无效果）
   if (typeof applyPermanentUpgrades === 'function') applyPermanentUpgrades();
@@ -1974,11 +2331,12 @@ function showRunSummary(victory) {
     if (typeof soulCrystals !== 'undefined') soulCrystals += soulReward;
     if (typeof settleEquipGains === 'function') settleEquipGains(); // 本局装备熟练度入账
   } else {
-    // 死亡：只给货币，熟练度作废
+    // 死亡：只给货币，熟练度作废；记录"上局死亡"（遗憾·装备残影房触发条件）
     soulReward = (typeof RUN_REWARDS !== 'undefined')
       ? RUN_REWARDS.DEATH_BASE + (runEliteKills || 0) * RUN_REWARDS.PER_ELITE_DEATH
       : 5;
     if (typeof soulCrystals !== 'undefined') soulCrystals += soulReward;
+    if (typeof lastRunDied !== 'undefined') lastRunDied = true;
   }
   if (typeof saveGame === 'function') saveGame();
 
@@ -1999,7 +2357,8 @@ function showRunSummary(victory) {
   }
   const btnsDiv = document.getElementById('defeat-btns');
   if (btnsDiv) {
-    btnsDiv.innerHTML = `<div class="ending-btn" onclick="enterHub()">返回零的领域</div>`;
+    // ⚠️ 成功通关返回：标记待触发的一次性小剧情（enterHub 消费）
+    btnsDiv.innerHTML = `<div class="ending-btn" onclick="setPendingHubSkit();enterHub()">返回零的领域</div>`;
   }
 
   // 隐藏战斗UI
@@ -2166,6 +2525,28 @@ pouchBtn.addEventListener('click', (e) => {
 // ── 启动 ──
 initBGParticles();
 loop(performance.now());
+
+// ⚠️ 本地演示钩子：?demo=hub 直接进零的领域（凝实态零），仅调试用，不影响正常游戏
+// 用法：http://localhost:8734/index.html?demo=hub
+(function(){
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get('demo') === 'hub') {
+      const _demoSave = {
+        difficulty:1, timestamp:Date.now(), prologuePhase:4, tutorialPhase:'battle',
+        inHub:true, bossEnergy:0, zeroReturnTriggered:true, energyReturned:true,
+        zeroSolidified:true, trioDepartureDone:true, hubRunNumber:3,
+        weaponId:'beginner_brush', armorId:'thin_silk', skillId:'concentration',
+        playerHP:100, playerMaxHP:100, soulCrystals:200, permanentUpgrades:{},
+        unlockedWeapons:['beginner_brush'], equipmentLevels:{}, weaponBuffs:{},
+        equipProficiency:{}, achievements:{}, ch1SkitsDone:[], uniqueEventsDone:[],
+        lastRunDied:false,
+      };
+      localStorage.setItem('consciousness_sea_save', JSON.stringify(_demoSave));
+      setTimeout(() => { if (typeof continueGame === 'function') continueGame(); }, 300);
+    }
+  } catch(e) { console.error('demo钩子失败:', e); }
+})();
 
 console.log('%c意识之海 · 序章 · 觉醒 v2 %c已就绪',
   'font-size:16px;color:#88bbee;','font-size:12px;color:#666;');

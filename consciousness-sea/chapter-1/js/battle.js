@@ -23,6 +23,7 @@ let equipmentLevels = {};        // { [equipmentId]: lv }，融合等级，跨�
 let weaponBuffs = {};            // { [weaponId]: buffId }，深层掉落固化的武器buff，持久化
 let unlockedArmors = new Set();  // 局内已解锁防具（run-scoped，每局重置）
 let unlockedTalismans = new Set();// 局内已解锁护符（run-scoped，每局重置）
+let trioHealUsed = false;        // 三人同行回血已用（本局限一次，小萤治愈）
 
 // ═══ 装备熟练度 / 开局随机池 ═══
 let equipProficiency = {};       // { [equipmentId]: count } 熟练度，跨局持久化（5次解锁开局池）
@@ -327,6 +328,9 @@ function hasWeaponBuff(buffId) {
 function resetRunEquipmentState() {
   unlockedArmors = new Set();
   unlockedTalismans = new Set();
+  // ⚠️ 武器buff改为局内有效：每局/新局清空 weaponBuffs（商店铭刻+深层掉落 buff 只当局，
+  // 不再跨局持久化，避免初始武器铭刻的 buff 永久残留）
+  if (typeof weaponBuffs !== 'undefined') weaponBuffs = {};
 }
 
 /** 每局潜航开始重置统计与局内装备获得计数（hub.js startRoguelikeDive / main.js startPrologue 调用） */
@@ -336,6 +340,7 @@ function resetRunStats() {
   runEquipGains = {};
   if (typeof skillInheritGiven !== 'undefined') skillInheritGiven = []; // 技能传承防刷标记（每局重置）
   eightGatesLevel = 0; // 八门遁甲门数（每局重置）
+  trioHealUsed = false; // 三人同行回血（本局限一次）
 }
 
 /** 小萤出发前随机提供装备：基础件 + 熟练度达标件（weaponGift 升级 = 武器池全开） */
@@ -415,6 +420,24 @@ function drawEnemyOne(ctx, e) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(ent.char, ent.x + hurtShake + ent.wobbleX*0.3, ent.y + hurtShake*0.5 + ent.wobbleY*0.3);
   ctx.shadowBlur = 0;
+
+  // ⚠️ 残影·「攻」字特殊渲染（遗憾·装备残影战）：巨型字 + 血色残影光效
+  if (ent._echoShadow) {
+    const bigSz = sz * 2.4;
+    ctx.shadowColor = '#ff5544';
+    ctx.shadowBlur = 24 + Math.sin(ent.phase)*10;
+    ctx.fillStyle = 'rgba(255,70,50,0.9)';
+    ctx.font = `bold ${bigSz}px "Noto Serif SC","SimSun",serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // 残像拖影：多重大字错位
+    for (let k = 1; k <= 3; k++) {
+      ctx.globalAlpha = 0.12 / k;
+      ctx.fillText('攻', ent.x + hurtShake + Math.sin(ent.phase + k)*14*k, ent.y + hurtShake*0.5 + Math.cos(ent.phase+k)*10*k);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillText('攻', ent.x + hurtShake, ent.y + hurtShake*0.5);
+    ctx.shadowBlur = 0;
+  }
   ctx.restore();
 }
 
@@ -510,6 +533,8 @@ function dealDamageToEnemy(e, dmg, isCombo, isAoe) {
   }
   // 风暴 tempest：AOE命中增伤
   if (isAoe && hasWeaponBuff('tempest')) final = Math.floor(final * 1.3);
+  // 雷流派协同：AOE 增伤（schoolMod 定义在 echo.js，运行时存在）
+  if (isAoe) final = Math.floor(final * (1 + (typeof schoolMod === 'function' ? schoolMod('aoeDmgMult', 'storm') : 0)));
   // 护壁减半（穿透 buff 或 贯日固有 pierce 豁免）
   if (e.type === 'shield' && !hasWeaponBuff('pierce')) final = Math.max(1, Math.floor(final * 0.5));
 
@@ -525,11 +550,12 @@ function dealDamageToEnemy(e, dmg, isCombo, isAoe) {
   ent.hurtFlash = 0.18;
   shakeAmount = Math.max(shakeAmount, final * 0.3);
 
-  // 连锁 chain：单伤命中时对其他敌人溅射30%（_chainGuard 防递归）
+  // 连锁 chain：单伤命中时对其他敌人溅射（雷流派协同提高溅射率；_chainGuard 防递归）
   if (!isAoe && hasWeaponBuff('chain') && !_chainGuard) {
     _chainGuard = true;
+    const chainRate = 0.30 + (typeof schoolMod === 'function' ? schoolMod('chainSplash', 'storm') : 0);
     for (const o of enemyList) {
-      if (o.alive && o !== e) dealDamageToEnemy(o, Math.max(1, Math.floor(final * 0.3)), false, false);
+      if (o.alive && o !== e) dealDamageToEnemy(o, Math.max(1, Math.floor(final * chainRate)), false, false);
     }
     _chainGuard = false;
   }
@@ -554,7 +580,8 @@ function applyWeaponEffects() {
     const bossFreeze = bossActive && bossState &&
       (bossState.phase === BOSS_PHASE.CHARGING || bossState.phase === BOSS_PHASE.ATTACK);
     if (!bossFreeze) {
-      blazeProgress = Math.min(100, blazeProgress + 20 + (typeof echoMod==='function'?echoMod('blazeBonus'):0));
+      blazeProgress = Math.min(100, blazeProgress + 20 + (typeof echoMod==='function'?echoMod('blazeBonus'):0)
+        + (typeof schoolMod==='function'?schoolMod('blazeBonus','blaze'):0));
       // 炎爆触发
       if (blazeProgress >= 100 && !blazeActive) {
         blazeActive = true; blazeTimer = 6.0; blazeProgress = 100;
@@ -570,9 +597,10 @@ function applyWeaponEffects() {
     }
   }
 
-  // 霜序减速（对全体存活敌人生效，含遗响·减速加成）
+  // 霜序减速（对全体存活敌人生效，含遗响·减速加成 + 寒冰流派协同）
   if (playerWeapon.slow) {
-    const slowAmt = 0.25 + (typeof echoMod==='function'?echoMod('slowBonus'):0);
+    const slowAmt = 0.25 + (typeof echoMod==='function'?echoMod('slowBonus'):0)
+      + (typeof schoolMod==='function'?schoolMod('slowBonus','frost'):0);
     for (const e of enemyList) {
       if (!e.alive) continue;
       e.timer = Math.min(e.timer + slowAmt, e.interval * 1.5);
@@ -603,6 +631,29 @@ function applyDamageToPlayer(rawDmg) {
   playerHP -= dmg;
   if (playerHP < 0) playerHP = 0;
   if (dmg > 0) playerHurtTimer = 0.2;
+
+  // ⚠️ 三人同行回血：零/小萤同行期间，生命<20%时回血到50%（本局限一次）
+  const _trioActive = (typeof trioDepartureDone !== 'undefined' && trioDepartureDone
+    && typeof energyReturned !== 'undefined' && !energyReturned);
+  if (_trioActive && !trioHealUsed
+      && typeof playerMaxHP !== 'undefined' && playerHP < playerMaxHP * 0.2) {
+    trioHealUsed = true;
+    playerHP = Math.floor(playerMaxHP * 0.5);
+    if (typeof updatePlayerUI === 'function') updatePlayerUI();
+    if (typeof Sound !== 'undefined' && Sound.itemGet) Sound.itemGet();
+    if (typeof particles !== 'undefined' && typeof W !== 'undefined') {
+      for (let i = 0; i < 20; i++) {
+        const p = new HitParticle(W*0.5, H*0.6, '#88ffcc', '愈');
+        p.vx = (Math.random()-0.5)*2; p.vy = (Math.random()-0.5)*2 - 1;
+        p.size = 4+Math.random()*6; p.life = 30+Math.random()*30;
+        particles.push(p);
+      }
+    }
+    if (typeof DamageText !== 'undefined' && typeof W !== 'undefined') {
+      particles.push(new DamageText(W*0.5, H*0.55, '小萤 · 治愈', '#88ffcc'));
+    }
+  }
+
   updatePlayerUI();
   return { dmg, absorbed, shieldBroken: hasShield === false && absorbed > 0 };
 }
@@ -1286,6 +1337,12 @@ function handleBattleClick(bw) {
   }
 
   if(bw.cat==='攻'){
+    // ⚠️ 执·放下执念：抉择期间攻击残影 → 自爆反噬
+    if (typeof _letGo !== 'undefined' && _letGo && !_letGo.done && typeof onLetGoAttack === 'function') {
+      bw.alive = false; bw.targetAlpha = 0;
+      onLetGoAttack();
+      return;
+    }
     // 无敌敌人（残响之影等）→ 攻击无效
     if (enemyHP === -1) {
       particles.push(new DamageText(bw.x,bw.y-8,'无效','#888888'));
@@ -1303,10 +1360,14 @@ function handleBattleClick(bw) {
       return;
     }
     const comboBase=combo>=10?2.5:combo>=7?2.0:combo>=5?1.5:combo>=3?1.2:1;
-    const bonus=comboBase+(typeof echoMod==='function'?echoMod('comboBoost'):0);
+    // 工坊「连击强化」对整体连击倍率再乘（getComboBonusMultiplier 定义在 permanent-shop.js，运行时存在）
+    const _comboWorkshop=(typeof getComboBonusMultiplier==='function')?getComboBonusMultiplier():1;
+    const bonus=(comboBase+(typeof echoMod==='function'?echoMod('comboBoost'):0))*_comboWorkshop;
     const boostMult=nextAttackBoost?2:1;
     const baseDmg=(playerWeapon?playerWeapon.damage:10)*getEquipMult(playerWeapon?playerWeapon.id:'')+(typeof echoMod==='function'?echoMod('atkDmgFlat'):0);
-    let dmg=Math.floor((baseDmg+Math.random()*3)*bonus*boostMult*(1+(typeof echoMod==='function'?echoMod('atkDmg'):0)));
+    // 残响 buff：击败残影获得的全伤害加成（echoShadowBuff 定义在 rooms.js）
+    const _echoShadowMult = (typeof echoShadowBuff !== 'undefined' && echoShadowBuff) ? (1 + (echoShadowBuff.atkMult || 0)) : 1;
+    let dmg=Math.floor((baseDmg+Math.random()*3)*bonus*boostMult*(1+(typeof echoMod==='function'?echoMod('atkDmg'):0))*_echoShadowMult);
     // 遗响·暴击
     const critCh=(typeof echoMod==='function'?echoMod('critChance'):0);
     if(critCh>0&&Math.random()<critCh){
@@ -1359,7 +1420,8 @@ function handleBattleClick(bw) {
     const perWord = getShieldPerWord(playerArmor)
       + (typeof echoMod==='function'?echoMod('shieldPerWord'):0);
     const maxShield = getMaxShieldCap(playerArmor)
-      + (typeof echoMod==='function'?echoMod('shieldMax'):0);
+      + (typeof echoMod==='function'?echoMod('shieldMax'):0)
+      + (typeof echoShadowBuff !== 'undefined' && echoShadowBuff ? (echoShadowBuff.shieldBonus || 0) : 0);
     const oldShield = hasShield ? shieldHP : 0;
     shieldHP = Math.min(oldShield + perWord, maxShield);
     hasShield = true;
@@ -1434,7 +1496,8 @@ function applyThreatModifiers(baseStats) {
       Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[0] : diff.enemyDmg[0]) * (1 + t * 0.05) * (1 + (typeof echoMod==='function'?echoMod('enemyDmgUp'):0))),
       Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[1] : diff.enemyDmg[1]) * (1 + t * 0.05) * (1 + (typeof echoMod==='function'?echoMod('enemyDmgUp'):0)))
     ],
-    enemyInterval: Math.max(2.5, (baseStats.enemyInterval || diff.enemyInterval) * (1 - t * 0.03)) + (typeof echoMod==='function'?echoMod('enemyIntervalUp'):0),
+    enemyInterval: Math.max(2.5, (baseStats.enemyInterval || diff.enemyInterval) * (1 - t * 0.03)) + (typeof echoMod==='function'?echoMod('enemyIntervalUp'):0)
+      + (typeof schoolMod==='function'?schoolMod('enemyIntervalUp','frost'):0),
     noiseRate:     Math.min(0.45, (baseStats.noiseRate || diff.noiseRate) + t * 0.02),
     speed:         (baseStats.speed || diff.speed) + t * 0.06,
   };

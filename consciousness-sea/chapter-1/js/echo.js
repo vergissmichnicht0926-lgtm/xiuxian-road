@@ -19,9 +19,10 @@ const ECHO_RARITY = {
   epic:   { weight: 0.15, color: '#ffb648', label: '史诗', cost: 200 },
 };
 
-// ═══════════════ 遗响数据池（20 个：普通7 / 稀有8 / 史诗5） ═══════════════
+// ═══════════════ 遗响数据池（24 个：普通8 / 稀有11 / 史诗5） ═══════════════
 // effects 的 key 见 ECHO_EFFECT_FMT（绘制时转中文）。含代价 key：
 //   hpMaxCost / hpCost / threatUp / enemyDmgUp / noiseUp 会在效果行标红。
+// 流派遗响带 school 字段（对应 config.js SCHOOLS），参与同流派计件协同。
 
 const ECHO_DEFS = {
   // ── 普通 ──
@@ -57,6 +58,14 @@ const ECHO_DEFS = {
     desc:'光透过棱镜，一分为二，再合二为一。' },
   trade_echo:   { name:'市集之忆', rarity:'rare', icon:'市', effects:{ shopDiscount:0.15 },
     desc:'前任潜航者留下的议价直觉。' },
+  cinder_echo:  { name:'燔薪之忆', rarity:'rare', icon:'燔', school:'blaze', effects:{ blazeBonus:12 },
+    desc:'燔薪为引，燎原在即——炎流派的薪火。' },
+  frost_echo:   { name:'霜华之忆', rarity:'rare', icon:'霜', school:'frost', effects:{ slowBonus:0.35 },
+    desc:'霜华落定，万物迟滞——冰流派的第一片雪。' },
+  volt_echo:    { name:'惊蛰之忆', rarity:'rare', icon:'蛰', school:'storm', effects:{ comboBoost:0.10, atkDmg:0.06 },
+    desc:'蛰伏既久，一雷惊春——雷流派的第一道电。' },
+  glaze_echo:   { name:'凝冰之忆', rarity:'common', icon:'凝', school:'frost', effects:{ slowBonus:0.20 },
+    desc:'凝冰成镜，照见自己的倒影慢慢变慢。' },
 
   // ── 史诗（含代价型）──
   dawn_echo:    { name:'破晓之刻', rarity:'epic', icon:'晓', effects:{ atkDmg:0.25, critChance:0.10 },
@@ -123,6 +132,49 @@ function echoMod(key) {
     if (d && d.effects && typeof d.effects[key] === 'number') s += d.effects[key];
   }
   return s;
+}
+
+// ═══════════════ 属性流派协同（SCHOOL） ═══════════════
+// 计件源：①当前武器 school ②遗响 ECHO_DEFS[].school ③当前武器固化的 buff（WEAPON_BUFFS[].school）。
+// 只读、不落持久化；件数≥2 起效（synergy2），≥3 升级（synergy3），数值温和不压过混搭。
+
+/** 统计某流派的计件数（武器 + 遗响 + 武器buff） */
+function schoolCount(school) {
+  let n = 0;
+  // ① 当前武器
+  if (typeof playerWeapon !== 'undefined' && playerWeapon && playerWeapon.school === school) n++;
+  // ② 遗响
+  if (Array.isArray(echoInventory)) {
+    for (const id of echoInventory) {
+      const d = ECHO_DEFS[id];
+      if (d && d.school === school) n++;
+    }
+  }
+  // ③ 当前武器固化的 buff
+  if (typeof playerWeapon !== 'undefined' && playerWeapon && typeof weaponBuffs !== 'undefined'
+      && typeof WEAPON_BUFFS !== 'undefined') {
+    const buffId = weaponBuffs[playerWeapon.id];
+    const bd = buffId && WEAPON_BUFFS[buffId];
+    if (bd && bd.school === school) n++;
+  }
+  return n;
+}
+
+/** 流派协同修正：某 key 按当前件数取 synergy2/synergy3，不够 2 件返回 0 */
+function schoolMod(key, school) {
+  if (!school || typeof SCHOOLS === 'undefined' || !SCHOOLS[school]) return 0;
+  const S = SCHOOLS[school];
+  const n = schoolCount(school);
+  if (n >= 3 && S.synergy3 && S.synergy3[key] != null) return S.synergy3[key];
+  if (n >= 2 && S.synergy2 && S.synergy2[key] != null) return S.synergy2[key];
+  return 0;
+}
+
+/** 流派标签中文（显示层用） */
+function schoolLabel(school) {
+  if (!school || typeof SCHOOLS === 'undefined' || !SCHOOLS[school]) return '';
+  const s = SCHOOLS[school];
+  return `${s.icon}${s.name}`;
 }
 
 /** 收集一个遗响（含 grant 时一次性代价） */
@@ -293,6 +345,14 @@ function drawEchoChoice(ctx) {
     ctx.font = '10px "Noto Serif SC","SimSun",serif';
     ctx.textAlign = 'left';
     ctx.fillText(rr.label, cx - w / 2 + 10, cy - h / 2 + 16);
+
+    // 流派标签（右上角）：一眼可辨所属流派
+    if (card.school && typeof SCHOOLS !== 'undefined' && SCHOOLS[card.school]) {
+      const s = SCHOOLS[card.school];
+      ctx.fillStyle = s.color;
+      ctx.textAlign = 'right';
+      ctx.fillText(`${s.icon}${s.name}`, cx + w / 2 - 10, cy - h / 2 + 16);
+    }
 
     // 图标
     ctx.fillStyle = rr.color;

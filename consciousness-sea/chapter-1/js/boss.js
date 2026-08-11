@@ -42,8 +42,8 @@ const BOSS_CONFIG = {
       { type:'left_charge', speed:20, maxSpeed:28, damage:32, color:'#ffcc44', bounces:0, afterimages:3, afterimageInterval:0.5 },
       // 技能2: 贵·雨金 — 金箔般的大范围雨弹幕，慢速坠落覆盖战场
       { type:'right_bullet', pattern:'rain', count:7, speed:2.2, maxSpeed:3.5, damage:14, color:'#ffdd44', duration:4.5, bulletSize:28, bulletInterval:0.38 },
-      // 技能3: 遗·归尘爆 — 撒炸弹+延迟全屏引爆
-      { type:'delayed_burst', bombs:6, burstCount:8, damage:13, color:'#ffdd44', layoutTime:2.0, warnTime:1.0, bombSpeed:1.5 },
+      // 技能3: 遗·归尘爆 — 撒炸弹+延迟全屏引爆（贵主导）
+      { type:'delayed_burst', part:'right', bombs:6, burstCount:8, damage:13, color:'#ffdd44', layoutTime:2.0, warnTime:1.0, bombSpeed:1.5 },
     ]
   },
 
@@ -91,6 +91,9 @@ const BOSS_CONFIG = {
     partSize: 85, splitDist: 170, minDist: 30,
     chargeTime: 6.0, vulnerableTime: 2.8, attackCooldown: 0.6,
     attacks: [
+      // 专属·憾心牢：未能兑现的心膨胀成不断收紧的心牢——链头锁住光标，心牢合拢前点「断」挣脱
+      { type:'heart_knot', part:'left', chainSpeed:16, chainSize:28, chainColor:'#ff5544',
+        lockRadius:120, lockDuration:2.6, burstDamage:26, knotSize:52 },
       // 碎片态·执念锁链强化（憾=压制控制）
       { type:'grip_chain', chainSpeed:18, chainSize:28, chainColor:'#ff5544',
         lockRadius:150, lockDuration:3.0, damage:16 },
@@ -109,12 +112,15 @@ const BOSS_CONFIG = {
     partSize: 85, splitDist: 170, minDist: 30,
     chargeTime: 6.0, vulnerableTime: 2.8, attackCooldown: 0.6,
     attacks: [
+      // 专属·千金散尽：失落的守财者把财富洒向你——捡走的免追债，没捡的化为轰击
+      { type:'scatter_treasure', part:'right', orbs:6, orbColor:'#ffdd44', orbSize:22,
+        layTime:1.6, warnTime:1.0, homeDelay:1.2, homeSpeed:2.4, maxSpeed:4.0, damage:13 },
       // 碎片态·余音回响强化（遗=留下/陷阱）
       { type:'echo_bullet', pattern:'rain', count:7, speed:2.3, maxSpeed:3.2,
         damage:11, echoDamage:15, echoDelay:1.0, echoSpeed:2.8,
         bulletInterval:0.32, duration:4.5, bulletSize:24, color:'#ffdd66' },
-      // 陷阱·归尘爆
-      { type:'delayed_burst', bombs:6, burstCount:8, damage:13, color:'#ffdd44',
+      // 陷阱·归尘爆（贵主导）
+      { type:'delayed_burst', part:'right', bombs:6, burstCount:8, damage:13, color:'#ffdd44',
         layoutTime:2.0, warnTime:1.0, bombSpeed:1.5 },
       // 游击·残影冲撞（3重）
       { type:'left_charge', speed:19, maxSpeed:27, damage:30, color:'#ffcc44',
@@ -138,7 +144,7 @@ const BOSS_CONFIG = {
       { type:'grip_chain', part:'right', chainSpeed:18, chainSize:28, chainColor:'#ffdd66',
         lockRadius:150, lockDuration:3.0, damage:16 },
       // 贵主导·归尘爆（合体技，暴露双部件）
-      { type:'delayed_burst', bombs:7, burstCount:9, damage:14, color:'#ffcc44',
+      { type:'delayed_burst', part:'right', bombs:7, burstCount:9, damage:14, color:'#ffcc44',
         layoutTime:2.0, warnTime:1.0, bombSpeed:1.6 },
       // 心主导·追忆之殇：残影冲撞（4重）
       { type:'left_charge', part:'left', speed:20, maxSpeed:28, damage:32, color:'#ff6655',
@@ -151,6 +157,7 @@ const BOSS_CONFIG = {
 
 let bossActive = false, bossConfig = null, bossState = null;
 let bossProjectiles = [], mouseHitRadius = 18;
+let _letGo = null; // 执·放下执念抉择状态 {timer, done, mode:'wait'|'explode'|'letgo'}
 
 function makePart(x, y, size) {
   return { x, y, size, phase:0, wobbleX:0, wobbleY:0, vx:0, vy:0, _isFlying:false, _bounces:0, alpha:1, targetAlpha:1 };
@@ -200,6 +207,9 @@ function initBoss(key) {
     _regretBurst: null,      // 悔满归尘警告状态（点「放下」取消）
     _lastPart: null,         // 上次攻击主导部件（双核心切换防连用同面）
     _partSwitch: null,       // 部件切换演出（全屏扫掠+字幕）
+    // ── 忆·追忆回溯状态（蓄力结束小概率回到蓄力前血量）──
+    _backtrackHp: 0,         // 本次蓄力开始时的血量（回溯目标）
+    _backtrackUsed: false,   // 本场是否已触发过回溯（每场最多1次）
   };
   // 文字在坠落期间仍存在，撞击瞬间才震碎
 }
@@ -279,7 +289,11 @@ function updateBoss(dt) {
         dp.gravity = -0.01;
         particles.push(dp);
       }
-      if ((s.timer+=dt) > 1.0) { s.timer=0; s.phase=BOSS_PHASE.CHARGING; s.chargeProgress=0; }
+      if ((s.timer+=dt) > 1.0) {
+        s.timer=0; s.phase=BOSS_PHASE.CHARGING; s.chargeProgress=0;
+        // 忆·追忆回溯：记录本次蓄力开始时的血量（供蓄力结束回溯）
+        s._backtrackHp = s.hp;
+      }
       break;
 
     case BOSS_PHASE.CHARGING:
@@ -324,7 +338,7 @@ function updateBoss(dt) {
         s._gravityActive=false; s._gravityIntensity=0; s._heartLock=null;
         // 清除新攻击类型状态
         s._afterimages=[]; s._burstBombs=[]; s._burstPhase='layout';
-        s._echoMarks=[]; s._gripChain=null;
+        s._echoMarks=[]; s._gripChain=null; s._scatterOrbs=[];
         // 暴露部件处理
         const isBoth = s._exposedPart === 'both';
         const isLeftAtk = s.currentAttack && s.currentAttack.type==='left_charge';
@@ -505,10 +519,17 @@ function updateAttackPhase(s, cfg, cx, cy, dt) {
     if (s.attackWaveTimer >= atk.duration + 0.5) s.attackWaveCount = s._attackMaxWaves;
     return;
   }
-  // 执念锁链：链头追尾 → 锁光标（updateGripChain 管理）
-  if (atk && atk.type==='grip_chain') {
+  // 执念锁链 / 憾心牢：链头追尾 → 锁光标（updateGripChain 管理）
+  if (atk && (atk.type==='grip_chain' || atk.type==='heart_knot')) {
     updateGripChain(s, atk, dt);
     if (s._gripChain && s._gripChain.done) s.attackWaveCount = s._attackMaxWaves;
+    return;
+  }
+  // 千金散尽：宝珠静止 → 追踪轰击
+  if (atk && atk.type==='scatter_treasure') {
+    updateScatterTreasure(s, atk, dt);
+    const anyAlive = s._scatterOrbs && s._scatterOrbs.some(o => o.alive);
+    if (!anyAlive) s.attackWaveCount = s._attackMaxWaves;
     return;
   }
 
@@ -741,10 +762,11 @@ function shouldEndAttack(s, cfg, dt) {
   const wavesDone = s.attackWaveCount >= s._attackMaxWaves;
   // 残影全部消失/命中
   const afterimagesDone = !s._afterimages || s._afterimages.length === 0 || s._afterimages.every(ai => ai._done);
-  // 余音/锁链也需清空（回声攻击持续到回声弹消失）
+  // 余音/锁链/散宝也需清空（回声攻击持续到回声弹消失）
   const echoDone = !s._echoMarks || s._echoMarks.length === 0;
   const gripDone = !s._gripChain || s._gripChain.done;
-  const allGone = bossProjectiles.length===0 && !s.left._isFlying && !s.right._isFlying && afterimagesDone && echoDone && gripDone;
+  const scatterDone = !s._scatterOrbs || s._scatterOrbs.every(o => !o.alive);
+  const allGone = bossProjectiles.length===0 && !s.left._isFlying && !s.right._isFlying && afterimagesDone && echoDone && gripDone && scatterDone;
   return wavesDone && (allGone || s.timer>8);
 }
 
@@ -835,11 +857,14 @@ function executeAttack(attack, spdMul, spiralOffset) {
   }
 
   // 执念锁链：从「扌」抛链头（_homing 追尾）
-  if (attack.type==='grip_chain') {
+  // 憾心牢（heart_knot）：同锁链但锁定后锁在中心「心」锚点 + 收缩环，超时心牢合拢（burstDamage+清字）
+  if (attack.type==='grip_chain' || attack.type==='heart_knot') {
     s._gripChain = {
       phase: 'throw', heads: [], locked: false, done: false, lockTimer: 0,
       radius: attack.lockRadius || 140, lockDuration: attack.lockDuration || 2.8,
       chainColor: attack.chainColor || '#ff8844', breakNode: null,
+      mode: attack.type === 'heart_knot' ? 'knot' : 'chain',
+      knotRadius: attack.knotSize || 52, burstDamage: attack.burstDamage || 26, burstFired: false,
     };
     const head = new Projectile('锁', s.left.x, s.left.y, 0, 0, attack.chainColor || '#ff8844', attack.damage || 14, 26);
     head._homing = { speed: attack.chainSpeed || 16, turnRate: 2.5 };
@@ -847,6 +872,24 @@ function executeAttack(attack, spdMul, spiralOffset) {
     s._gripChain.heads.push(head);
     bossProjectiles.push(head);
     for (let i=0;i<10;i++) particles.push(new HitParticle(s.left.x,s.left.y,attack.chainColor||'#ff8844','·'));
+    Sound.enemyAtk();
+    return;
+  }
+
+  // 遗·千金散尽：从「贵」核心向屏幕撒宝珠——点击拾取免追债，未拾取的化作追踪轰击
+  if (attack.type==='scatter_treasure') {
+    const margin = edgeMargin();
+    const orbs = [];
+    for (let i = 0; i < (attack.orbs || 6); i++) {
+      orbs.push({
+        x: margin * 0.6 + Math.random() * (W - margin * 1.2),
+        y: H * 0.18 + Math.random() * (H * 0.5),
+        phase: 'lay', t: 0, picked: false, homeDelay: attack.homeDelay || 1.2,
+        vx: 0, vy: 0, alive: true, char: '贵',
+      });
+    }
+    s._scatterOrbs = orbs;
+    for (let i = 0; i < 10; i++) particles.push(new HitParticle(s.right.x, s.right.y, attack.orbColor || '#ffdd44', '·'));
     Sound.enemyAtk();
     return;
   }
@@ -918,7 +961,7 @@ function drawEchoMarks(ctx) {
 }
 
 // ═══════════════ 执·执念锁链（grip_chain）═══════════════
-/** 锁链更新：throw（链头追尾）→ locked（锁光标）→ done */
+/** 锁链更新：throw（链头追尾）→ locked（锁光标）→ done。heart_knot 锁定后心牢收缩，超时合拢 */
 function updateGripChain(s, atk, dt) {
   const g = s._gripChain;
   if (!g) return;
@@ -933,9 +976,16 @@ function updateGripChain(s, atk, dt) {
     }
     if (hit && !g.locked) {
       g.locked = true; g.phase = 'locked'; g.lockTimer = 0;
-      g.anchorX = mx; g.anchorY = my;
-      const ang = Math.atan2(my - g.anchorY, mx - g.anchorX);
-      g.breakNode = { x: g.anchorX + Math.cos(ang) * g.radius, y: g.anchorY + Math.sin(ang) * g.radius, alive: true };
+      if (g.mode === 'knot') {
+        // 心牢：锁在屏幕中心「心」锚点，半径从大向小收缩
+        g.anchorX = W * 0.5; g.anchorY = H * 0.42;
+        g.radius = Math.max(90, W * 0.32);
+        g.breakNode = { x: g.anchorX, y: g.anchorY, alive: true }; // 中心可点「断」
+      } else {
+        g.anchorX = mx; g.anchorY = my;
+        const ang = Math.atan2(my - g.anchorY, mx - g.anchorX);
+        g.breakNode = { x: g.anchorX + Math.cos(ang) * g.radius, y: g.anchorY + Math.sin(ang) * g.radius, alive: true };
+      }
       onHitByLeftPart(atk.damage);
       if (typeof comboPenalty === 'function') comboPenalty();
       if (typeof Sound !== 'undefined' && Sound.stun) Sound.stun();
@@ -944,31 +994,140 @@ function updateGripChain(s, atk, dt) {
     if (!g.locked && g.heads.every(h => h._done)) { g.phase = 'done'; g.done = true; }
   } else if (g.phase === 'locked') {
     g.lockTimer += dt;
-    if (!g.breakNode.alive || g.lockTimer >= (atk.lockDuration || 2.8)) {
-      g.phase = 'done'; g.done = true;
+    // 心牢：半径随时间收缩（收得越紧，说明憾越要"留住"你）
+    if (g.mode === 'knot') {
+      const startR = Math.max(90, W * 0.32);
+      const endR = Math.max(40, startR * 0.35);
+      const progress = Math.min(1, g.lockTimer / (atk.lockDuration || 2.6));
+      g.radius = startR + (endR - startR) * progress;
+      // 心牢合拢：超时未点「断」→ burstDamage + 清字
+      if (!g.breakNode.alive) {
+        g.phase = 'done'; g.done = true;
+      } else if (g.lockTimer >= (atk.lockDuration || 2.6)) {
+        if (!g.burstFired) {
+          g.burstFired = true;
+          if (typeof applyDamageToPlayer === 'function') applyDamageToPlayer(g.burstDamage || 26);
+          if (typeof shatterPlayerWords === 'function') shatterPlayerWords();
+          for (let i = 0; i < 20; i++) particles.push(new HitParticle(g.anchorX, g.anchorY, '#ff5544', '憾'));
+        }
+        g.phase = 'done'; g.done = true;
+      }
+    } else {
+      if (!g.breakNode.alive || g.lockTimer >= (atk.lockDuration || 2.8)) {
+        g.phase = 'done'; g.done = true;
+      }
     }
   }
 }
-/** 锁链渲染：锁定圈 + 断节点（链头本体由 Projectile.draw 绘制「锁」字） */
+/** 锁链渲染：锁定圈 + 断节点（链头本体由 Projectile.draw 绘制「锁」字）。心牢模式画收缩红环 */
 function drawGripChain(ctx) {
   const s = bossState, g = s._gripChain;
   if (!g) return;
   if (g.phase === 'locked' && g.breakNode) {
     const pulse = 0.5 + 0.5 * Math.sin(s.animTimer * 5);
     ctx.save();
-    ctx.strokeStyle = `rgba(255,120,90,${0.5 * pulse + 0.3})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(g.anchorX, g.anchorY, g.radius, 0, Math.PI * 2); ctx.stroke();
-    if (g.breakNode.alive) {
-      ctx.fillStyle = '#ffdd88';
-      ctx.font = 'bold 26px "Noto Serif SC","SimSun",serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.shadowColor = '#ffdd88'; ctx.shadowBlur = 12 + pulse * 8;
-      ctx.fillText('断', g.breakNode.x, g.breakNode.y);
+    if (g.mode === 'knot') {
+      // 心牢：收缩红环 + 中心「心」字 + 倒计时提示
+      const startR = Math.max(90, W * 0.32);
+      const progress = 1 - Math.min(1, g.lockTimer / (g.lockDuration || 2.6)); // 剩余比例
+      ctx.strokeStyle = `rgba(255,60,40,${0.5 + 0.5 * pulse})`;
+      ctx.lineWidth = 3 + pulse * 2;
+      ctx.beginPath(); ctx.arc(g.anchorX, g.anchorY, g.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = `rgba(255,70,50,${0.12 + 0.1 * pulse})`;
+      ctx.beginPath(); ctx.arc(g.anchorX, g.anchorY, g.radius, 0, Math.PI * 2); ctx.fill();
+      if (g.breakNode.alive) {
+        ctx.fillStyle = '#ff5544';
+        ctx.font = `bold ${g.knotRadius || 52}px "Noto Serif SC","SimSun",serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#ff5544'; ctx.shadowBlur = 16 + pulse * 10;
+        ctx.fillText('心', g.anchorX, g.anchorY);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffdd88';
+        ctx.font = 'bold 24px "Noto Serif SC","SimSun",serif';
+        ctx.fillText('断', g.anchorX + g.knotRadius, g.anchorY);
+      }
+      ctx.fillStyle = 'rgba(255,140,120,0.7)';
+      ctx.font = '13px "Noto Serif SC","SimSun",serif';
+      ctx.fillText('心牢收紧 · 点「断」挣脱', W * 0.5, g.anchorY - g.radius - 14);
+    } else {
+      ctx.strokeStyle = `rgba(255,120,90,${0.5 * pulse + 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(g.anchorX, g.anchorY, g.radius, 0, Math.PI * 2); ctx.stroke();
+      if (g.breakNode.alive) {
+        ctx.fillStyle = '#ffdd88';
+        ctx.font = 'bold 26px "Noto Serif SC","SimSun",serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#ffdd88'; ctx.shadowBlur = 12 + pulse * 8;
+        ctx.fillText('断', g.breakNode.x, g.breakNode.y);
+      }
+      ctx.fillStyle = 'rgba(255,150,120,0.5)';
+      ctx.font = '12px "Noto Serif SC","SimSun",serif';
+      ctx.fillText('被锁 · 点「断」挣脱', W * 0.5, g.anchorY - g.radius - 16);
     }
-    ctx.fillStyle = 'rgba(255,150,120,0.5)';
-    ctx.font = '12px "Noto Serif SC","SimSun",serif';
-    ctx.fillText('被锁 · 点「断」挣脱', W * 0.5, g.anchorY - g.radius - 16);
+    ctx.restore();
+  }
+}
+
+// ═══════════════ 遗·千金散尽（scatter_treasure）═══════════════
+/** 宝珠更新：lay（静止）→ home（未拾取者追踪轰击）。拾取（hitTest）后免追债 */
+function updateScatterTreasure(s, atk, dt) {
+  const orbs = s._scatterOrbs;
+  if (!orbs || !orbs.length) return;
+  for (const o of orbs) {
+    if (!o.alive) continue;
+    if (o.phase === 'lay') {
+      o.t += dt;
+      if (o.t >= (o.homeDelay || 1.2)) o.phase = 'home';
+    } else if (o.phase === 'home') {
+      // 追踪光标（_homing 复用追尾逻辑，直线逼近 + 限速）
+      const ang = Math.atan2(my - o.y, mx - o.x);
+      o.vx += Math.cos(ang) * dt * 60 * 0.8;
+      o.vy += Math.sin(ang) * dt * 60 * 0.8;
+      const spdMax = atk.maxSpeed || 4.0;
+      const spdCur = Math.hypot(o.vx, o.vy);
+      if (spdCur > spdMax) { o.vx = o.vx / spdCur * spdMax; o.vy = o.vy / spdCur * spdMax; }
+      o.x += o.vx * dt * 60;
+      o.y += o.vy * dt * 60;
+      // 命中玩家 → 扣血 + 消失（复用 onPlayerHitByProjectile 的 proj 对象签名）
+      if (Math.hypot(o.x - mx, o.y - my) < mouseHitRadius + (atk.orbSize || 22)) {
+        o.alive = false;
+        if (typeof onPlayerHitByProjectile === 'function') {
+          onPlayerHitByProjectile({ damage: atk.damage || 13, x: o.x, y: o.y });
+        }
+        for (let i = 0; i < 10; i++) particles.push(new HitParticle(o.x, o.y, atk.orbColor || '#ffdd44', '贵'));
+      }
+    }
+  }
+}
+/** 宝珠渲染：静止时脉动「贵」+ 可点拾取提示；追踪时金黄飞弹 */
+function drawScatterTreasure(ctx) {
+  const s = bossState, orbs = s._scatterOrbs;
+  if (!orbs || !orbs.length) return;
+  const pulse = 0.6 + 0.4 * Math.sin(s.animTimer * 4);
+  for (const o of orbs) {
+    if (!o.alive) continue;
+    ctx.save();
+    if (o.phase === 'lay') {
+      ctx.fillStyle = `rgba(255,210,80,${0.7 + 0.3 * pulse})`;
+      ctx.font = `${(o.homeDelay ? 22 : 22) + pulse * 3}px "Noto Serif SC","SimSun",serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 10 + pulse * 8;
+      ctx.fillText('贵', o.x, o.y);
+      ctx.shadowBlur = 0;
+      // 剩余追踪时间提示（可点拾取）
+      const left = Math.max(0, (o.homeDelay || 1.2) - o.t);
+      if (left > 0.05) {
+        ctx.fillStyle = 'rgba(255,240,180,0.6)';
+        ctx.font = '10px "Noto Serif SC","SimSun",serif';
+        ctx.fillText('点拾取', o.x, o.y + 18);
+      }
+    } else {
+      ctx.fillStyle = '#ffdd44';
+      ctx.font = '20px "Noto Serif SC","SimSun",serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 12;
+      ctx.fillText('贵', o.x, o.y);
+    }
     ctx.restore();
   }
 }
@@ -1078,6 +1237,24 @@ function drawPartSwitch(ctx) {
 function hitTestBossInteract(cx, cy) {
   if (!bossActive || !bossState) return false;
   const s = bossState;
+  // 散宝：点击拾取，免追债（遗·千金散尽）
+  if (s._scatterOrbs && s._scatterOrbs.length) {
+    for (const o of s._scatterOrbs) {
+      if (!o.alive || o.phase !== 'lay') continue;
+      if (Math.hypot(o.x - cx, o.y - cy) < (o.homeDelay ? 24 : 24)) {
+        o.alive = false;
+        for (let j = 0; j < 12; j++) {
+          const a = Math.random() * Math.PI * 2;
+          const p = new HitParticle(o.x, o.y, '#ffdd44', '贵');
+          p.vx = Math.cos(a) * 2; p.vy = Math.sin(a) * 2;
+          p.size = 4 + Math.random() * 5; p.life = 10 + Math.random() * 12;
+          particles.push(p);
+        }
+        if (typeof Sound !== 'undefined' && Sound.boost) Sound.boost();
+        return true;
+      }
+    }
+  }
   // 余音：点击提前消除，不再生成回声
   if (s._echoMarks && s._echoMarks.length) {
     for (const m of s._echoMarks) {
@@ -1382,10 +1559,11 @@ function drawBoss(ctx) {
 
   bossProjectiles.forEach(p=>p.draw(ctx));
 
-  // 专属机制渲染：余音 / 锁链 / 悔业障（弹幕之上，可点节点可见）
+  // 专属机制渲染：余音 / 锁链 / 悔业障 / 散宝（弹幕之上，可点节点可见）
   drawEchoMarks(ctx);
   drawGripChain(ctx);
   drawRegretBurst(ctx);
+  drawScatterTreasure(ctx);
 
   // 双核心切换演出（最上层全屏扫掠）
   drawPartSwitch(ctx);
@@ -1448,6 +1626,31 @@ function onBossChargeComplete() {
   battleWords=[];
   document.getElementById('stun-overlay').classList.add('active');
   setTimeout(()=>document.getElementById('stun-overlay').classList.remove('active'),400);
+
+  // ⚠️ 忆·追忆回溯：蓄力结束有概率回到本次蓄力前的血量（忆被困在过去，会"回到过去"）
+  // 概率15%，每场最多触发1次，避免无限回血挫败
+  if (bossConfig && bossConfig.name === '忆' && bossState && typeof bossState._backtrackHp === 'number'
+      && !(bossState._backtrackUsed) && Math.random() < 0.15 && bossState.hp > 0
+      && bossState._backtrackHp > bossState.hp) {
+    bossState.hp = Math.max(1, bossState._backtrackHp);
+    bossState._backtrackUsed = true;
+    // 演出：蓝光凝滞 + 「忆 · 回到过去」
+    if (typeof Sound !== 'undefined' && Sound.anomaly) Sound.anomaly();
+    shakeAmount = Math.max(shakeAmount, 12);
+    const _bw = W, _bh = H;
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const p = new HitParticle(_bw*0.5, _bh*0.22, '#7dd7ff', '忆');
+      p.vx = Math.cos(a) * 3; p.vy = Math.sin(a) * 3;
+      p.size = 4 + Math.random() * 6; p.life = 30 + Math.random() * 30;
+      particles.push(p);
+    }
+    if (typeof DamageText !== 'undefined' && typeof W !== 'undefined') {
+      particles.push(new DamageText(W*0.5, H*0.28, '忆 · 回到过去', '#7dd7ff'));
+    }
+    // 若回溯血量超过二阶段阈值，重新评估狂暴状态
+    if (bossState.hp / bossState.maxHP >= 0.5 && bossState._phase2) bossState._phase2 = false;
+  }
 }
 
 function shatterPlayerWords() {
@@ -1691,7 +1894,7 @@ function defeatBoss() {
   // 清理新攻击类型状态
   bossState._afterimages=[]; bossState._burstBombs=[];
   bossState._gravityActive=false; bossState._heartLock=null;
-  bossState._echoMarks=[]; bossState._gripChain=null; bossState._regretBurst=null;
+  bossState._echoMarks=[]; bossState._gripChain=null; bossState._regretBurst=null; bossState._scatterOrbs=[];
   if(typeof enemyEntity!=='undefined')enemyEntity=null; shakeAmount=16;
   if (typeof clearEnemyList === 'function') clearEnemyList(); // 清空多敌人编队
   if (typeof lastBossKey !== 'undefined') lastBossKey = null; // Boss已击败，清除重试记录
@@ -1706,6 +1909,13 @@ function defeatBoss() {
   if (typeof BOSS_ENERGY !== 'undefined' && typeof bossEnergy !== 'undefined') {
     const bkey = bossState._bossKey || 'regret';
     if (BOSS_ENERGY[bkey]) bossEnergy += BOSS_ENERGY[bkey];
+    // 能量满 → 零回归触发（第三层切换遗憾完全体、解锁结局线）。遗憾完全体(+2)击败即满
+    if (typeof ZERO_ENERGY_TOTAL !== 'undefined' && bossEnergy >= ZERO_ENERGY_TOTAL
+        && typeof zeroReturnTriggered !== 'undefined' && !zeroReturnTriggered) {
+      zeroReturnTriggered = true;
+      if (typeof saveGame === 'function') saveGame();
+      if (typeof Sound !== 'undefined' && Sound.anomaly) Sound.anomaly(); // 提示音
+    }
   }
 
   // 图鉴：解锁Boss击败记忆（憾/遗 走 triggerHanFlee / 遗假撤退分支，这里到不了）
@@ -1729,8 +1939,34 @@ function defeatBoss() {
   for(let i=0;i<100;i++) particles.push(new HitParticle(cx,cy,'#ffcc88','·'));
   Sound.victory();
 
-  // 遗响·三选一：仅第一章肉鸽三 Boss（忆/执/遗憾）触发；憾假撤退、遗融合天然不走此分支
-  if (typeof openEchoChoice === 'function') {
+  // 第一章肉鸽 Boss 击败余韵：播完再进三选一/清场（Boss 碎片态只有一句，轻量）
+  if (typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap) {
+    const bossKey = bossState ? bossState._bossKey : null;
+    // 三选一 Boss：先设 echoChoicePending，让 DEFEATED 分支挂起（防余韵期间 3s 误清场）
+    const wantsEcho = bossKey === 'recall' || bossKey === 'obsess' || bossKey === 'regretful';
+    if (wantsEcho && typeof echoChoicePending !== 'undefined') echoChoicePending = true;
+    playBossDefeatEpilogue(bossKey, () => {
+      // ⚠️ 遗憾完全体击败 → 结局线：三人战场剧情 + 小萤白光 → 接记忆 CG
+      if (bossKey === 'regretful' && typeof playRegretfulEndingScene === 'function') {
+        playRegretfulEndingScene();
+        return;
+      }
+      // ⚠️ 执·放下执念：执死亡后残影不散，进入抉择——攻击→自爆，等待→自放
+      if (bossKey === 'obsess' && typeof startLetGoChoice === 'function') {
+        startLetGoChoice(() => {
+          if (typeof openEchoChoice === 'function') {
+            openEchoChoice(0.08);
+          }
+        });
+        return;
+      }
+      // 遗响·三选一：仅第一章肉鸽三 Boss（忆/执/遗憾）触发；憾假撤退、遗融合天然不走此分支
+      if (typeof openEchoChoice === 'function' && wantsEcho) {
+        const bias = bossKey === 'recall' ? 0 : bossKey === 'obsess' ? 0.08 : 0.15;
+        openEchoChoice(bias);
+      }
+    });
+  } else if (typeof openEchoChoice === 'function') {
     const bossKey = bossState ? bossState._bossKey : null;
     if (bossKey === 'recall' || bossKey === 'obsess' || bossKey === 'regretful') {
       echoChoicePending = true;
@@ -1738,6 +1974,213 @@ function defeatBoss() {
       openEchoChoice(bias);
     }
   }
+}
+
+// ═══════════════ 第一章 Boss 击败余韵 ═══════════════
+// 三层主题递进：追忆 → 执念 → 遗憾。碎片态/完全体也有专属余韵。
+const BOSS_EPILOGUES = {
+  recall: [
+    { mode:'plain', text:'（记忆的残响在浅海散开。那些碎片里，有她的名字，也有……我叫不上来的某个人。）' },
+    { mode:'whisper', speaker:'我', text:'「忆」散了。可我忘掉的东西，好像更清晰了一点。' },
+  ],
+  obsess: [
+    { mode:'plain', text:'（锁链终于松手。它攥着的东西落下来——一个轮廓，像一个人，又像某个再也回不去的时刻。）' },
+    { mode:'whisper', speaker:'我', text:'原来放不下，是因为还没有走到能放下的地方。' },
+  ],
+  regret_abyss: [
+    { mode:'plain', text:'（憾的心牢在眼前崩开。里面什么都没有——除了一个空位。）' },
+    { mode:'whisper', speaker:'我', text:'它在等什么？还是在等谁？' },
+  ],
+  yi_abyss: [
+    { mode:'plain', text:'（遗散尽千金，最后什么也没留住。它一路走一路丢，丢到最后只剩自己。）' },
+    { mode:'whisper', speaker:'我', text:'贵重的东西，往往不是被抢走的，是自己弄丢的。' },
+  ],
+  regretful: [
+    { mode:'shake', speaker:'我', text:'心与贵……一起崩塌了。遗憾本身，终于有了名字。' },
+  ],
+};
+
+/** 播放第一章 Boss 击败余韵（逐句对话），播完回调 */
+function playBossDefeatEpilogue(bossKey, onDone) {
+  const lines = (BOSS_EPILOGUES && BOSS_EPILOGUES[bossKey]) || null;
+  if (!lines || !lines.length || typeof Dialogue === 'undefined') {
+    if (typeof onDone === 'function') onDone();
+    return;
+  }
+  let idx = 0;
+  function playNext() {
+    if (idx >= lines.length) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    const d = lines[idx];
+    idx++;
+    Dialogue.show({
+      mode: d.mode || 'plain',
+      speaker: d.speaker || '',
+      text: d.text,
+      speed: d.speed || 40,
+    });
+  }
+  playNext();
+  // 用定时器监测对话结束 → 播下一句 / 全部播完回调
+  if (_bossEpilogueTimer) clearInterval(_bossEpilogueTimer);
+  _bossEpilogueTimer = setInterval(() => {
+    if (typeof Dialogue !== 'undefined' && !Dialogue.active) {
+      if (idx < lines.length) {
+        playNext();
+      } else {
+        clearInterval(_bossEpilogueTimer);
+        _bossEpilogueTimer = null;
+        if (typeof onDone === 'function') onDone();
+      }
+    }
+  }, 200);
+}
+let _bossEpilogueTimer = null;
+
+// ═══════════════ 遗憾完全体击败 → 三人战场剧情 + 小萤白光 → 接记忆 CG ═══════════════
+// 主人编排：击败遗憾后，零/小萤影像出现→三人对话→小萤吸收能量放白光→接记忆CG
+let _regretSceneTimer = null;
+function playRegretfulEndingScene() {
+  // 清战场（bossState 已 DEFEATED，echoChoicePending 保持挂起）
+  if (typeof bossActive !== 'undefined') bossActive = false;
+  if (typeof bossState !== 'undefined') bossState = null;
+  if (typeof bossProjectiles !== 'undefined') bossProjectiles = [];
+  if (typeof echoChoicePending !== 'undefined') echoChoicePending = false;
+  if (typeof clearEnemyList === 'function') clearEnemyList();
+
+  // 三人对话（零/小萤影像在战场出现）
+  const lines = [
+    { mode:'shake', speaker:'零', text:'……它终于散了。', speed:36 },
+    { mode:'float', speaker:'小萤', text:'主人！！你没事吧！零姐姐你看他——还活着！', speed:30 },
+    { mode:'float', speaker:'零', text:'（目光落向消散的遗憾）我感觉到……有什么东西，正要醒过来。', speed:36 },
+    { mode:'plain', text:'（遗憾消散处，一缕暖金色的光缓缓浮起，飘向小萤。）' , speed:40},
+    { mode:'whisper', speaker:'小萤', text:'这是……好熟悉。像是……一段很长很长的记忆。', speed:32 },
+    { mode:'shake', speaker:'小萤', text:'（小萤吸收了那缕光，通体爆发出刺目的白光——）', speed:34 },
+  ];
+  let idx = 0;
+  function playNext() {
+    if (idx >= lines.length) return; // 全部播完，由 interval 的 else 分支触发白光段
+    const d = lines[idx];
+    idx++;
+    if (typeof Dialogue !== 'undefined') {
+      Dialogue.show({ mode: d.mode, speaker: d.speaker || '', text: d.text, speed: d.speed || 40 });
+    }
+  }
+  if (_regretSceneTimer) clearInterval(_regretSceneTimer);
+  _regretSceneTimer = setInterval(() => {
+    if (typeof Dialogue === 'undefined' || !Dialogue.active) {
+      if (idx < lines.length) {
+        playNext();
+      } else {
+        // 对话全部播完 → 白光段（结局逻辑）
+        clearInterval(_regretSceneTimer);
+        _regretSceneTimer = null;
+        // 小萤白光 → 接记忆 CG
+        if (typeof Sound !== 'undefined' && Sound.anomaly) Sound.anomaly();
+        const _stun = document.getElementById('stun-overlay');
+        if (_stun) { _stun.classList.add('active'); setTimeout(() => _stun.classList.remove('active'), 800); }
+        if (typeof energyReturned !== 'undefined' && !energyReturned) {
+          energyReturned = true;
+          if (typeof zeroSolidified !== 'undefined') zeroSolidified = true; // 零凝实态
+          if (typeof bossEnergy !== 'undefined') bossEnergy = 0;
+          if (typeof registerMemory === 'function') registerMemory('memory_white_room');
+          if (typeof saveGame === 'function') saveGame();
+        }
+        setTimeout(() => {
+          if (typeof triggerZeroReturnCinematic === 'function') triggerZeroReturnCinematic();
+        }, 900);
+      }
+    }
+  }, 250);
+  playNext();
+}
+
+// ═══════════════ 执·放下执念（死亡抉择）═══════════════
+// 执被打败后残影不散，开始最后蓄力。攻击它→自爆（强求反噬）；等待→残影自放（放下）。
+let _letGoTimer = null;
+function startLetGoChoice(onDone) {
+  _letGo = { timer: 0, mode: 'wait', done: false, onDone: onDone || null };
+  if (typeof Dialogue !== 'undefined') {
+    Dialogue.show({
+      mode: 'shake', speaker: '???',
+      text: '「执」的残影还在蓄力——它死也不肯松手。攻击它，或等待它……',
+      speed: 34,
+    });
+  }
+  // 抉择期间刷词元（bossState 已 DEFEATED，主循环平衡不执行，这里手动补）
+  if (typeof balanceWords === 'function') balanceWords();
+  if (_letGoTimer) clearInterval(_letGoTimer);
+  _letGoTimer = setInterval(() => {
+    if (!_letGo || _letGo.done) { if (_letGoTimer) { clearInterval(_letGoTimer); _letGoTimer = null; } return; }
+    _letGo.timer += 0.2;
+    // 每 0.6s 补一次词元，保证有「攻」字可点
+    if (_letGo.timer % 0.6 < 0.2 && typeof balanceWords === 'function') balanceWords();
+    // 3 秒无人攻击 → 残影自放
+    if (_letGo.timer >= 3.0) {
+      _letGo.done = true;
+      if (_letGoTimer) { clearInterval(_letGoTimer); _letGoTimer = null; }
+      // 演出：残影缓缓松开手，消散
+      if (typeof Sound !== 'undefined' && Sound.itemGet) Sound.itemGet();
+      if (typeof grantShards === 'function') grantShards(15, W*0.5, H*0.25); // 放下的馈赠
+      if (typeof Dialogue !== 'undefined') {
+        Dialogue.show({
+          mode: 'plain',
+          text: '（残影松开了手。执念散作微光，缓缓沉入深海——它终于放下了。）',
+          speed: 40,
+        });
+      }
+      for (let i = 0; i < 40; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const p = new HitParticle(W*0.5, H*0.25, '#ffaa55', '·');
+        p.vx = Math.cos(a)*1.5; p.vy = Math.sin(a)*1.5 - 1;
+        p.size = 3+Math.random()*5; p.life = 30+Math.random()*30;
+        particles.push(p);
+      }
+      finishLetGo();
+    }
+  }, 200);
+}
+
+/** 玩家攻击执的残影 → 自爆反噬 */
+function onLetGoAttack() {
+  if (!_letGo || _letGo.done || _letGo.mode !== 'wait') return;
+  _letGo.done = true; _letGo.mode = 'explode';
+  if (_letGoTimer) { clearInterval(_letGoTimer); _letGoTimer = null; }
+  // 演出：自爆，全屏震 + 大伤害 + 清词元
+  if (typeof Sound !== 'undefined' && Sound.anomaly) Sound.anomaly();
+  shakeAmount = 30;
+  if (typeof applyDamageToPlayer === 'function') applyDamageToPlayer(30);
+  if (typeof shatterPlayerWords === 'function') shatterPlayerWords();
+  for (let i = 0; i < 80; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = 2 + Math.random() * 10;
+    const p = new HitParticle(W*0.5, H*0.25, i%2 ? '#ff5544' : '#ffaa55', '执');
+    p.vx = Math.cos(a)*spd; p.vy = Math.sin(a)*spd;
+    p.size = 3+Math.random()*8; p.life = 20+Math.random()*30;
+    particles.push(p);
+  }
+  if (typeof Dialogue !== 'undefined') {
+    Dialogue.show({
+      mode: 'shake', speaker: '???',
+      text: '……紧握的执念，反噬了紧握的手。（自爆！）',
+      speed: 36,
+    });
+  }
+  finishLetGo();
+}
+
+/** 抉择结束 → 清理并回调（进入三选一） */
+function finishLetGo() {
+  const cb = _letGo ? _letGo.onDone : null;
+  _letGo = null;
+  // 清残影（bossState 已是 DEFEATED，直接清理避免残留）
+  if (typeof bossActive !== 'undefined') bossActive = false;
+  if (typeof bossState !== 'undefined') bossState = null;
+  if (typeof bossProjectiles !== 'undefined') bossProjectiles = [];
+  if (typeof restorePlayerWords === 'function') restorePlayerWords();
+  if (typeof cb === 'function') cb();
 }
 
 /* ═══════════════ §K 遗憾合体·溯洄 — 剧情演出 ═══════════════

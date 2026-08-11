@@ -124,7 +124,7 @@ const EQUIP_ICON_OVERRIDE = {
   beginner_brush:'笔', star_shatter:'碎', blaze_heaven:'焚', frost_verse:'霜',
   thin_silk:'绢', mind_wall:'壁', light_veil:'纱',
   concentration:'卍', time_freeze:'瓦', excalibur:'e',
-  vitality_charm:'春', nectar_charm:'露', ward_charm:'护',
+  vitality_charm:'春', ward_charm:'护',
 };
 if (typeof EQUIPMENT !== 'undefined') {
   for (const [catKey, label] of [['weapons','武器'],['armors','防具'],['skills','技能'],['talismans','护符']]) {
@@ -139,6 +139,7 @@ if (typeof EQUIPMENT !== 'undefined') {
         desc: e.desc,
         icon: EQUIP_ICON_OVERRIDE[id] || e.name.charAt(0),
         iconColor: e.color || '#8899bb',
+        school: e.school || null,   // 流派（武器），图鉴流派色点用
       };
     }
   }
@@ -223,6 +224,7 @@ if (typeof ECHO_DEFS !== 'undefined' && typeof ECHO_RARITY !== 'undefined') {
     BESTIARY_RELIC_DEFS[key] = {
       id: key, name: d.name, category: rr.label + '遗响',
       desc: d.desc, icon: d.icon || '忆', iconColor: rr.color,
+      school: d.school || null,   // 流派，图鉴流派色点用
     };
   });
 }
@@ -521,6 +523,16 @@ function drawBestiaryRow(ctx, entry, data, marginX, contentW, y, itemH, hideCate
       ctx.fillStyle = 'rgba(200,210,230,0.35)';
       ctx.font = '10px "Noto Serif SC","SimSun",serif';
       ctx.fillText(entry.category || '', cx + 28, y + 32);
+    }
+
+    // 流派色点（武器/遗响）：一眼可辨所属流派
+    if (entry.school && typeof SCHOOLS !== 'undefined' && SCHOOLS[entry.school]) {
+      const s = SCHOOLS[entry.school];
+      ctx.fillStyle = s.color;
+      ctx.font = '10px "Noto Serif SC","SimSun",serif';
+      ctx.textAlign = 'left';
+      const catW = ctx.measureText(entry.category || '').width;
+      ctx.fillText(`${s.icon}${s.name}`, cx + 28 + catW + 8, y + 32);
     }
 
     // 描述（右侧）

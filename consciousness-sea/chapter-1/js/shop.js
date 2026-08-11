@@ -12,8 +12,10 @@
 // ═══════════════ 局内货币 ═══════════════
 let shards = 0;
 
-/** 给予局内碎片（带粒子效果和音效） */
+/** 给予局内碎片（带粒子效果和音效）。遗响 shardMult（漂流/贪婪）在此统一放大 */
 function grantShards(amount, x, y) {
+  const mult = 1 + (typeof echoMod === 'function' ? (echoMod('shardMult') || 0) : 0);
+  if (mult !== 1) amount = Math.floor(amount * mult);
   shards += amount;
   updateShardsDisplay();
   // 粒子

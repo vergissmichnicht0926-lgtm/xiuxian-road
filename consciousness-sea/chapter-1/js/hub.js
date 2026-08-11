@@ -26,6 +26,7 @@ let hubParticles = [];          // Hub环境粒子
 let hubXiaoying = null;         // 小萤光团状态
 let hubRoguelikeHovered = false;// 肉鸽按钮悬停
 let _hubZeroTalkTimer = null;   // 零对话定时器
+let trioDepartureDone = false;  // 三人同行出发剧情是否已播过（零伤好要求同行+小萤同去）
 let _hubMenuCloseTimer = null;  // 菜单关闭延迟定时器
 let _hubRestartTimer1 = null;   // 重新开始确认定时器1
 let _hubRestartTimer2 = null;   // 重新开始确认定时器2
@@ -74,7 +75,7 @@ function enterHub() {
 
   // 零的投影 — 半透明悬浮
   if (typeof mentor !== 'undefined') {
-    if (!mentor.visible || mentor.alpha < 0.01) mentor.init(W * 0.5, H * 0.28);
+    if (!mentor.visible || mentor.currentAlpha < 0.01) mentor.init(W * 0.5, H * 0.28);
     mentor.targetAlpha = 0.3;
   }
 
@@ -110,6 +111,12 @@ function enterHub() {
 
   // 存档
   if (typeof saveGame === 'function') saveGame();
+
+  // ⚠️ 成功通关归来的一次性小剧情（小萤叙述者幻觉 / 男女主感情铺路）
+  // 延迟一拍等 Hub 淡入完成再播，避免与入场演出重叠
+  if (typeof maybeTriggerCh1Skit === 'function') {
+    setTimeout(() => { maybeTriggerCh1Skit(); }, 500);
+  }
 }
 
 /** 清除所有Hub定时器 */
@@ -188,6 +195,16 @@ function openXiaoyingMenu() {
     { id: 'workshop', label: '工坊',    desc: '用灵魂结晶强化意识',   x: cx, y: cy + 40,  baseX: cx, baseY: cy + 40, alpha: 0, targetAlpha: 0.9, color: '#ffcc88', glow: '#cc8844', hovered: false },
     { id: 'achievements', label: '成就', desc: '深海中的足迹', x: cx, y: cy + 80, baseX: cx, baseY: cy + 80, alpha: 0, targetAlpha: 0.9, color: '#ffcc88', glow: '#cc8844', hovered: false },
   ];
+  // 能量交互：bossEnergy>0 时追加「把零的能量还给零」（结局线关键节点）
+  if (typeof bossEnergy !== 'undefined' && bossEnergy > 0) {
+    const energyDone = (typeof energyReturned !== 'undefined') ? energyReturned : false;
+    hubMenuItems.push({
+      id: 'energy', label: energyDone ? '零的能量' : '交还能量',
+      desc: energyDone ? '能量已交还 · 零在凝实' : `把收集到的零能量（${bossEnergy}）交还给她`,
+      x: cx, y: cy + 120, baseX: cx, baseY: cy + 120, alpha: 0, targetAlpha: 0.9,
+      color: energyDone ? '#88ffcc' : '#aaddff', glow: '#55aacc', hovered: false,
+    });
+  }
 }
 
 function closeXiaoyingMenu() {
@@ -336,22 +353,23 @@ function drawHub(ctx) {
   ctx.textAlign = 'center';
   ctx.fillText('零的领域', W * 0.5, H * 0.1);
 
-  // ── 零的投影 ──
-  // 在hub背景上绘制mentor（因为hub背景会遮住main.js中绘制的mentor）
-  if (typeof mentor !== 'undefined' && mentor.visible && mentor.alpha > 0.01) {
-    mentor.draw(ctx);
+  // ── 零的投影 ──（第一章：零没有实体人形，只有点点蓝色闪光）
+  // 保留 mentor 供点击检测，但不绘制人形
+  if (typeof mentor !== 'undefined' && mentor.visible) {
+    mentor.targetAlpha = 0;
   }
 
-  // 零周围微光粒子
+  // 点点蓝色闪光（环绕零的位置，蓝点闪烁）
   const zx = W * 0.5, zy = H * 0.28;
   const now = performance.now();
-  for (let i = 0; i < 5; i++) {
-    const angle = (i / 5) * Math.PI * 2 + now * 0.0003;
-    const r = 45 + Math.sin(now * 0.002 + i) * 8;
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 + now * 0.0004;
+    const r = 40 + Math.sin(now * 0.0015 + i * 0.8) * 12;
     const px = zx + Math.cos(angle) * r;
     const py = zy + Math.sin(angle) * r * 0.6;
-    ctx.fillStyle = `rgba(140,180,240,${0.12 + 0.06 * Math.sin(now * 0.003 + i)})`;
-    ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+    const twinkle = 0.25 + 0.2 * Math.sin(now * 0.004 + i * 1.3); // 闪烁
+    ctx.fillStyle = `rgba(140,190,245,${twinkle})`;
+    ctx.beginPath(); ctx.arc(px, py, 2.2, 0, Math.PI * 2); ctx.fill();
   }
 
   // ── "零"的标签 ──
@@ -609,6 +627,11 @@ function handleHubClick(cx, cy) {
         closeXiaoyingMenu();
         if (typeof openAchievements === 'function') openAchievements();
         return;
+      } else if (hubMenuHovered.id === 'energy') {
+        // 把零的能量交还给她 → 触发第一章结局演出
+        closeXiaoyingMenu();
+        if (typeof returnZeroEnergy === 'function') returnZeroEnergy();
+        return;
       }
     } else {
       // 点击空白关闭菜单
@@ -660,6 +683,16 @@ function handleHubClick(cx, cy) {
 // ═══════════════ 零的对话 ═══════════════
 
 function startHubZeroTalk() {
+  // ⚠️ 能量满未交还：零的引导回应（第一章结局线关键节点）
+  if (typeof zeroReturnTriggered !== 'undefined' && zeroReturnTriggered && !energyReturned) {
+    const energyPool = [
+      { mode:'float', speaker:'零', text:'……我感觉到能量够了。可以拼回我了。', speed:40 },
+      { mode:'whisper', text:'（零的投影比平时亮了一些，像是第一次主动看向你。）', speed:46 },
+      { mode:'float', speaker:'零', text:'去找小萤。把能量交还给我。然后……我陪你，去见她。', speed:36 },
+    ];
+    playHubDialogues(energyPool);
+    return;
+  }
   // 根据进度选择对话池
   let poolIdx = 0;
   if (hubRunNumber >= 2) poolIdx = 2;       // 多次潜航后
@@ -667,14 +700,16 @@ function startHubZeroTalk() {
 
   const pool = HUB_ZERO_DIALOGUES[Math.min(poolIdx, HUB_ZERO_DIALOGUES.length - 1)];
 
-  // 用Tutorial的对话队列机制？不，直接用Dialogue系统手动播放
-  // 随机选一段开始（循环池）
-  const dialogues = [...pool];
-  let idx = 0;
+  playHubDialogues(pool);
+}
 
+/** 播放一段零的对话池（逐句推进，结束回 idle） */
+function playHubDialogues(dialogues) {
+  const lines = [...dialogues];
+  let idx = 0;
   function playNext() {
-    if (idx >= dialogues.length) return;
-    const d = dialogues[idx];
+    if (idx >= lines.length) return;
+    const d = lines[idx];
     idx++;
     if (typeof Dialogue !== 'undefined') {
       Dialogue.show({
@@ -685,16 +720,12 @@ function startHubZeroTalk() {
       });
     }
   }
-
-  // 覆盖Dialogue.hide后的行为（通过设置hubPhase让updateHub处理）
   hubPhase = 'talking_zero';
   playNext();
-
-  // 用定时器监测对话结束 → 播放下一句
   if (_hubZeroTalkTimer) clearInterval(_hubZeroTalkTimer);
   _hubZeroTalkTimer = setInterval(() => {
-    if (!Dialogue.active) {
-      if (idx < dialogues.length) {
+    if (typeof Dialogue !== 'undefined' && !Dialogue.active) {
+      if (idx < lines.length) {
         playNext();
       } else {
         clearInterval(_hubZeroTalkTimer);
@@ -832,8 +863,53 @@ function startRoguelikeDive() {
   if (typeof applyPermanentUpgrades === 'function') applyPermanentUpgrades();
   if (typeof updatePlayerUI === 'function') updatePlayerUI();
 
+  // ⚠️ 三人同行出发剧情：能量满（遗憾已可遇）后第一次出发，零伤好要求同行+小萤同去
+  if (typeof zeroReturnTriggered !== 'undefined' && zeroReturnTriggered
+      && !trioDepartureDone && typeof Dialogue !== 'undefined') {
+    trioDepartureDone = true;
+    if (typeof saveGame === 'function') saveGame();
+    const trioLines = [
+      { mode:'plain', text:'（零的投影，第一次完整地站在你面前——不是虚影，是凝实的她。）' },
+      { mode:'float', speaker:'零', text:'……我伤好了。这次，我跟你一起去。', speed:36 },
+      { mode:'whisper', speaker:'我', text:'（愣住）你……身体没问题吗？', speed:40 },
+      { mode:'float', speaker:'零', text:'能量够了，能凝出实形。而且……', speed:36 },
+      { mode:'bounce', speaker:'小萤', text:'还有我！我也去！', speed:28 },
+      { mode:'float', speaker:'小萤', text:'你俩可别想丢下我——我扫描过了，这片海域我熟！', speed:30 },
+      { mode:'plain', text:'（三人同行。这一次，你不是独自下潜了。）' },
+    ];
+    // 独立自包含对话推进（不依赖 hubPhase / _hubZeroTalkTimer，避免状态冲突）
+    let tIdx = 0;
+    function playTrioLine() {
+      if (tIdx >= trioLines.length) {
+        // 对话全部播完 → 出发
+        if (_trioPollTimer) { clearInterval(_trioPollTimer); _trioPollTimer = null; }
+        doDiveDepart();
+        return;
+      }
+      const d = trioLines[tIdx];
+      tIdx++;
+      Dialogue.show({ mode: d.mode || 'float', speaker: d.speaker || '', text: d.text, speed: d.speed || 40 });
+    }
+    if (_trioPollTimer) clearInterval(_trioPollTimer);
+    _trioPollTimer = setInterval(() => {
+      if (typeof Dialogue !== 'undefined' && !Dialogue.active) {
+        playTrioLine();
+      }
+    }, 250);
+    playTrioLine();
+    return;
+  }
+
+  doDiveDepart();
+}
+
+let _trioDepartTimer = null;
+let _trioPollTimer = null;
+/** 实际执行潜航出发（生成地图+进入潜航） */
+function doDiveDepart() {
   // 退出Hub → 生成肉鸽地图 → 进入潜航
-  // 先清定时器防竞态，再统一在setTimeout中完成退出
+  if (_trioDepartTimer) { clearTimeout(_trioDepartTimer); _trioDepartTimer = null; }
+  if (_trioPollTimer) { clearInterval(_trioPollTimer); _trioPollTimer = null; }
   _clearHubTimers();
   setTimeout(() => {
     if (hubActive) _finishExitHub(); // 仅当updateHub还没退出时手动清理
