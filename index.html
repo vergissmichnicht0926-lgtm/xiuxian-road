@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vergissmeinnicht</title>
+<style>
+  :root {
+    --bg: #0b0b0f;
+    --card: #141418;
+    --text: #d0c8b8;
+    --muted: #777;
+    --accent: #c9a96e;
+    --border: #222;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 24px;
+  }
+  h1 {
+    font-size: 1.4rem; letter-spacing: 0.12em; font-weight: 400;
+    color: var(--accent); margin-bottom: 6px;
+  }
+  .subtitle { font-size: 0.8rem; color: var(--muted); margin-bottom: 36px; letter-spacing: 0.08em; }
+  .cards { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 380px; }
+  .card {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px 18px;
+    text-decoration: none; color: var(--text);
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .card:hover, .card:active { border-color: var(--accent); background: #1a1a20; }
+  .card .icon { font-size: 1.6rem; flex-shrink: 0; }
+  .card .info { flex:1; min-width: 0; }
+  .card .title { font-size: 0.95rem; font-weight: 600; }
+  .card .desc { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
+  .card .arrow { color: var(--muted); font-size: 0.8rem; flex-shrink: 0; }
+  footer {
+    margin-top: 40px; font-size: 0.7rem; color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+
+<h1>Vergissmeinnicht</h1>
+<div class="subtitle">一些零零碎碎的小项目</div>
+
+<div class="cards">
+  <a class="card" href="consciousness-sea/chapter-1/">
+    <span class="icon">🌊</span>
+    <span class="info">
+      <span class="title">意识之海</span>
+      <span class="desc">现代意识流文字实时战斗游戏</span>
+    </span>
+    <span class="arrow">→</span>
+  </a>
+
+  <a class="card" href="running/">
+    <span class="icon">🏃</span>
+    <span class="info">
+      <span class="title">跑步成就表</span>
+      <span class="desc">手机端可勾选跑步成就清单</span>
+    </span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<footer>一步一步，都算数。</footer>
+
+</body>
+</html>
