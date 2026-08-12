@@ -25,42 +25,71 @@ const EQUIPMENT = {
     'beginner_brush': {
       id:'beginner_brush', name:'初学者之笔',
       words:['斩','破','裂','刺','断'], color:'#ff6644', glow:'#cc3311',
-      damage:8, wordCount:5, targetMode:'single', desc:'UCRB标准配发的词元笔，攻字5枚，稳定均衡。'
+      damage:8, wordCount:5, targetMode:'single', desc:'UCRB标准配发的词元笔，攻字5枚，稳定均衡。',
+      awaken:{ dmgUp:3, desc:'攻字伤害+3——笔锋久淬，字字千钧。' },
     },
     'star_shatter': {
       id:'star_shatter', name:'碎星之刃',
       words:['灭','碎','崩','陨'], color:'#ff8866', glow:'#dd4422',
-      damage:12, wordCount:4, targetMode:'single', desc:'攻字仅4枚，但一击碎星——重锤低速高伤。'
+      damage:12, wordCount:4, targetMode:'single', desc:'攻字仅4枚，但一击碎星——重锤低速高伤。',
+      awaken:{ dmgUp:4, desc:'攻字伤害+4——碎星之势，一击裂空。' },
     },
     'blaze_heaven': {
       id:'blaze_heaven', name:'焚天',
       words:['焚','爆','燃','灼','炎','烧','焰'], color:'#ff7744', glow:'#ee5522',
-      damage:5, wordCount:7, blaze:true, targetMode:'single', school:'blaze', desc:'攻字7枚满屏烈焰，低伤高频，「炎」debuff灼烧。'
+      damage:5, wordCount:7, blaze:true, targetMode:'single', school:'blaze', desc:'攻字7枚满屏烈焰，低伤高频，「炎」debuff灼烧。',
+      awaken:{ blazeDmgUp:0.5, desc:'炎爆伤害+50%——焚天之焰，灼尽深海。' },
     },
     'frost_verse': {
       id:'frost_verse', name:'霜序',
       words:['刺','穿','凝','碎','寒','封'], color:'#99ccff', glow:'#4488bb',
-      damage:7, wordCount:6, slow:true, targetMode:'single', school:'frost', desc:'攻字6枚凝寒而生，附带减速，控场致胜。'
+      damage:7, wordCount:6, slow:true, targetMode:'single', school:'frost', desc:'攻字6枚凝寒而生，附带减速，控场致胜。',
+      awaken:{ slowUp:0.15, desc:'减速+0.15s——霜凝更深，万物迟滞。' },
     },
     'thunder_strike': {
       id:'thunder_strike', name:'惊雷',
       words:['雷','霆','震','轰','电','霹'], color:'#ffdd44', glow:'#bbaa22',
-      damage:6, wordCount:6, targetMode:'aoe', school:'storm', desc:'攻字6枚牵动天雷——AOE武器，伤害倾泻至场上所有敌人。'
+      damage:6, wordCount:6, targetMode:'aoe', school:'storm', desc:'攻字6枚牵动天雷——AOE武器，伤害倾泻至场上所有敌人。',
+      awaken:{ aoeDmgUp:0.15, desc:'AOE伤害+15%——惊雷贯空，群敌皆震。' },
     },
     'pierce_lance': {
       id:'pierce_lance', name:'贯日',
       words:['贯','穿','透','锥'], color:'#ffaa88', glow:'#dd5522',
-      damage:10, wordCount:4, targetMode:'single', pierce:true, desc:'攻字4枚，一击贯穿——无视护壁型敌人的减伤。'
+      damage:10, wordCount:4, targetMode:'single', pierce:true, desc:'攻字4枚，一击贯穿——无视护壁型敌人的减伤。',
+      awaken:{ pierceFull:true, desc:'完全无视护壁——贯日之势，无坚不摧。' },
     },
     'blood_eater': {
       id:'blood_eater', name:'饮血',
       words:['饮','血','噬','啜','汲'], color:'#ee6677', glow:'#bb2233',
-      damage:7, wordCount:5, targetMode:'single', leech:0.15, desc:'攻字5枚吸血而生，命中回复15%伤害。'
+      damage:7, wordCount:5, targetMode:'single', leech:0.15, desc:'攻字5枚吸血而生，命中回复15%伤害。',
+      awaken:{ leechUp:0.10, desc:'吸血15%→25%——饮血更深，战愈复生。' },
     },
     'void_blade': {
       id:'void_blade', name:'玄夜',
       words:['玄','夜','遁','潜','隐'], color:'#aa99ff', glow:'#6655cc',
-      damage:9, wordCount:5, targetMode:'single', focus:true, desc:'攻字5枚夜色暗涌，连续命中同一敌人伤害递增。'
+      damage:9, wordCount:5, targetMode:'single', focus:true, desc:'攻字5枚夜色暗涌，连续命中同一敌人伤害递增。',
+      awaken:{ focusMaxUp:3, desc:'专注叠层5→8——玄夜愈深，暗刃愈利。' },
+    },
+    'poison_fang': {
+      id:'poison_fang', name:'蚀骨',
+      words:['蚀','毒','溃','腐','疡'], color:'#66cc88', glow:'#228844',
+      damage:5, wordCount:5, targetMode:'single', school:'poison', poison:{ thresh:5, burst:18 },
+      desc:'攻字5枚慢浸慢蚀，命中叠毒——叠满5层爆出18点剧毒，血肉化泥。',
+      awaken:{ poisonBurstUp:10, desc:'毒爆18→28——蚀骨之毒，更蚀更毒。' },
+    },
+    'wind_chase': {
+      id:'wind_chase', name:'追风',
+      words:['风','追','掠','疾','迅','流','散','驰'], color:'#88ddbb', glow:'#44aa88',
+      damage:5, wordCount:8, targetMode:'single',
+      desc:'攻字8枚如流风不绝，低伤高频，字绵而不断。',
+      awaken:{ wordCountUp:2, desc:'攻字上限8→10——追风无形，字不停歇。' },
+    },
+    'solar_blade': {
+      id:'solar_blade', name:'曜刃',
+      words:['曜','辉','煌','炽','灼'], color:'#ffdd88', glow:'#ddbb55',
+      damage:8, wordCount:5, targetMode:'single', school:'light', radiance:1,
+      desc:'攻字5枚曜光煌煌——命中时微微回盾（1点），曜光流派的日冕之刃。',
+      awaken:{ radianceUp:1, desc:'曜刃回盾1→2——日冕辉光，护体愈坚。' },
     }
   },
   // ── 防具：words=词元池, wordCount=战场上限, defense=减伤, shieldPerWord=每字盾量, maxShield=盾量上限 ──
@@ -69,31 +98,50 @@ const EQUIPMENT = {
       id:'thin_silk', name:'薄绢',
       words:['盾','御','守','护'], color:'#66aaff', glow:'#3366cc',
       defense:1, shieldPerWord:3, maxShield:15, wordCount:4,
-      desc:'轻薄的意识纤维编织，防字4枚频繁刷新，减伤1，每字3盾，上限15。'
+      desc:'轻薄的意识纤维编织，防字4枚频繁刷新，减伤1，每字3盾，上限15。',
+      awaken:{ defenseUp:1, desc:'减伤+1——薄绢久织，韧而弥坚。' },
     },
     'mind_wall': {
       id:'mind_wall', name:'意识壁垒',
       words:['壁'], color:'#5588dd', glow:'#2255aa',
       defense:4, shieldPerWord:8, maxShield:30, wordCount:1,
-      desc:'防字仅1枚却坚不可摧，减伤4，每字8盾，上限30——重甲一诺万钧。'
+      desc:'防字仅1枚却坚不可摧，减伤4，每字8盾，上限30——重甲一诺万钧。',
+      awaken:{ defenseUp:2, desc:'减伤+2——意识壁垒，固若金汤。' },
     },
     'light_veil': {
       id:'light_veil', name:'流光之纱',
       words:['闪','护','避'], color:'#88ccff', glow:'#4488cc',
       defense:2, shieldPerWord:2, maxShield:8, wordCount:3, dodgeChance:0.20,
-      desc:'防字3枚如流光掠影，减伤2，每字2盾，上限8，20%概率完全闪避。'
+      desc:'防字3枚如流光掠影，减伤2，每字2盾，上限8，20%概率完全闪避。',
+      awaken:{ dodgeUp:0.10, desc:'闪避20%→30%——流光越影，避无可避。' },
     },
     'iron_oath': {
       id:'iron_oath', name:'铁誓',
       words:['誓','钢'], color:'#99aabb', glow:'#556677',
       defense:3, shieldPerWord:5, maxShield:22, wordCount:2,
-      desc:'防字2枚，一诺千钧——减伤3，每字5盾，上限22。厚重如山。'
+      desc:'防字2枚，一诺千钧——减伤3，每字5盾，上限22。厚重如山。',
+      awaken:{ defenseUp:1, shieldUp:5, desc:'减伤+1、盾上限+5——铁誓愈久，一诺愈重。' },
     },
     'moon_shroud': {
       id:'moon_shroud', name:'月隐',
       words:['隐','纱','幕'], color:'#ccbbff', glow:'#7766bb',
       defense:2, shieldPerWord:4, maxShield:18, wordCount:3,
-      desc:'防字3枚如月色轻纱——减伤2，每字4盾，上限18，攻守均衡。'
+      desc:'防字3枚如月色轻纱——减伤2，每字4盾，上限18，攻守均衡。',
+      awaken:{ defenseUp:1, desc:'减伤+1——月隐更深，无声无息。' },
+    },
+    'solar_mail': {
+      id:'solar_mail', name:'曜甲',
+      words:['曜','甲','辉','芒'], color:'#ffaa55', glow:'#dd7722',
+      defense:2, shieldPerWord:4, maxShield:20, wordCount:4, thorns:0.5,
+      desc:'防字4枚沐光而生——减伤2，每字4盾上限20。护盾被击时反伤50%，曜芒噬敌。',
+      awaken:{ thornsUp:0.3, desc:'反伤50%→80%——曜甲之光，反噬其主。' },
+    },
+    'still_depths': {
+      id:'still_depths', name:'静渊',
+      words:['静','渊'], color:'#7799cc', glow:'#335588',
+      defense:4, shieldPerWord:6, maxShield:26, wordCount:2,
+      desc:'防字2枚如渊如山——减伤4，每字6盾上限26。厚重沉稳，深不可测。',
+      awaken:{ defenseUp:2, desc:'减伤+2——静渊无底，深不可测。' },
     }
   },
   skills: {
@@ -186,22 +234,24 @@ const EQUIP_FUSION = {
   MAX_LEVEL: 5,            // 最高融合等级
 };
 
-// ═══════════════ 装备熟练度 / 开局随机池 ═══════════════
+// ═══════════════ 装备熟练度 / 开局随机池 / 觉醒 ═══════════════
 // 肉鸽中获得装备计熟练度，达到阈值解锁进开局随机池（小萤出发前随机给装备）
 const EQUIP_UNLOCK = {
   THRESHOLD: 5,            // 获得该装备几次后解锁进开局随机池
+  AWAKEN_THRESHOLD: 10,    // v5.2 觉醒：熟练度达此值解锁专属隐藏词缀
 };
 
 // ═══════════════ 潜航结算奖励（肉鸽总结页） ═══════════════
 // 通关：CLEAR_BASE + 层数×PER_LAYER + 精英×PER_ELITE + Boss×PER_BOSS
 // 死亡：DEATH_BASE + 精英×PER_ELITE_DEATH（只给货币，不加熟练度）
 const RUN_REWARDS = {
-  CLEAR_BASE: 10,          // 通关基础灵魂结晶
-  DEATH_BASE: 5,           // 死亡基础灵魂结晶
+  CLEAR_BASE: 15,          // 通关基础灵魂结晶（v5.1：10→15，通关轻微上调）
+  DEATH_BASE: 10,          // 死亡基础灵魂结晶（v5.1：5→10，修复死亡收益过低）
   PER_LAYER: 1,            // 每抵达一层 +1
   PER_ELITE: 3,            // 每击败一个精英 +3（通关）
   PER_ELITE_DEATH: 2,      // 每击败一个精英 +2（死亡）
   PER_BOSS: 10,            // 每击败一个 Boss +10
+  PER_BOSS_DEATH: 3,       // 死亡时每击败一个 Boss +3（v5.1 新增：死亡也保留部分 Boss 收益）
 };
 
 // ═══════════════ 属性流派（SCHOOL） ═══════════════
@@ -217,6 +267,12 @@ const SCHOOLS = {
   storm: { name:'雷电', icon:'雷', color:'#ffdd44', glow:'#bbaa22',
     synergy2: { aoeDmgMult:0.10 },
     synergy3: { aoeDmgMult:0.15, chainSplash:0.10 } },
+  light: { name:'曜光', icon:'曜', color:'#ffdd88', glow:'#ddbb55',
+    synergy2: { thornsUp:0.2, shieldPerWordUp:1 },
+    synergy3: { thornsUp:0.4, shieldPerWordUp:2 } },
+  poison: { name:'蚀毒', icon:'毒', color:'#66cc88', glow:'#228844',
+    synergy2: { poisonSpeedUp:1 },
+    synergy3: { poisonSpeedUp:1, poisonBurstUp:10 } },
 };
 
 // ═══════════════ 武器 Buff 池 ═══════════════
@@ -229,6 +285,10 @@ const WEAPON_BUFFS = {
   leech:   { name:'汲取',  desc:'伤害的15%转化为回复',              color:'#66ffaa' },
   focus:   { name:'专注',  desc:'连续命中同一目标伤害递增(最多5层)', color:'#ffcc66' },
   tempest: { name:'风暴',  desc:'AOE命中时伤害提升30%',             color:'#88ccff', school:'storm' },
+  // v5.2 新buff
+  sunder:  { name:'破甲',  desc:'命中叠破甲层，每层目标受击伤害+8%(最多5层)', color:'#ff9966' },
+  freeze:  { name:'霜封',  desc:'命中时冻结敌人0.3秒(延长攻击间隔)',  color:'#99ddff' },
+  rage:    { name:'狂暴',  desc:'连击时攻字伤害+10%',               color:'#ff5544' },
 };
 
 // 干扰虚词
@@ -275,6 +335,7 @@ const SHARD_REWARDS = {
   BOSS_REGRET_ABYSS: 100,  // 深层碎片态「憾」击败
   BOSS_YI_ABYSS: 100,      // 深层碎片态「遗」击败
   BOSS_REGRETFUL: 120,     // Boss「遗憾」完全体击败（结局）
+  ELITE_CLEAR: 40,         // 精英房清完（v5.1 新增）
   EVENT_FORCE: 20,         // 事件-强行打开
   EVENT_SKIP: 5,           // 事件-绕过
 };
@@ -304,12 +365,17 @@ const SHOP_CATALOG = {
     'pierce_lance': 170,
     'blood_eater': 190,
     'void_blade': 200,
+    'poison_fang': 190,
+    'wind_chase': 180,
+    'solar_blade': 200,
   },
   armors: {
     'mind_wall': 120,
     'light_veil': 150,
     'iron_oath': 130,
     'moon_shroud': 140,
+    'solar_mail': 150,
+    'still_depths': 140,
   },
   skills: {
     'time_freeze': 100,
@@ -358,6 +424,23 @@ const PERMANENT_UPGRADES = {
   inheritShop: {
     name:'传承共鸣', desc:'商店中出现传承技能的概率 +5%/级', cost:40, maxLevel:5,
     icon:'⚡',
+  },
+  // ── v5.1 新增 ──
+  shieldStart: {
+    name:'初始护盾', desc:'每局开始时获得 5 点护盾（每级 +5）', cost:40, maxLevel:3,
+    icon:'🛡',
+  },
+  defenseUp: {
+    name:'坚韧意识', desc:'全时段减伤 +1/级', cost:50, maxLevel:3,
+    icon:'⛨',
+  },
+  soulBoost: {
+    name:'结晶增幅', desc:'灵魂结晶结算 +10%/级', cost:60, maxLevel:3,
+    icon:'◆',
+  },
+  echoGift: {
+    name:'记忆胎动', desc:'每局开始时携带一个随机普通遗响', cost:80, maxLevel:1,
+    icon:'✨',
   },
 };
 
@@ -519,7 +602,7 @@ const ROGUELIKE_ROOM_POOL = {
       desc:'被遗弃的记忆碎片化作了噪点。孤身一只，却会周期性地冲撞你的意识。' },
     { id:'rc3', type:'combat', label:'雨幕噪点', enemyType:'rain', waves:4, count:1, enemyHP:58, enemyInterval:4.8, enemyDmgMult:1.4, hardMode:false,
       desc:'降下漫天意识之雨。仅一只便足以封锁全场，考验走位。' },
-    { id:'rc4', type:'combat', label:'追踪残响', enemyType:'track', waves:4, count:1, enemyHP:64, enemyInterval:2.8, enemyDmgMult:1.8, hardMode:true,
+    { id:'rc4', type:'combat', label:'追踪残响', enemyType:'track', waves:4, count:1, enemyHP:64, enemyInterval:2.8, enemyDmgMult:1.5, hardMode:true,
       desc:'只发一颗追踪弹，但它蓄力极快，不会停下，直到追上你的光标。一只足以致命。' },
     // 多敌房（编队，波次少）：群起而攻，快速解决
     { id:'rc2', type:'combat', label:'齐射噪点', enemyType:'volley', waves:2, enemyHP:48, enemyInterval:6.0, enemyDmgMult:1.4, hardMode:false,
@@ -537,6 +620,13 @@ const ROGUELIKE_ROOM_POOL = {
     { id:'rt1', type:'treasure', label:'遗落装备', desc:'词元结晶仍在发光，但守护它的残响之影尚未消散。' },
     { id:'rt2', type:'treasure', label:'沉没武器', desc:'前任潜航者的词元结晶。被深海的残响守护着。' },
   ],
+  // v5.1 精英房池：type 沿用 'combat'（完全复用战斗管线），elite:true 标记区分奖励/渲染/图鉴
+  elite: [
+    { id:'relite1', type:'combat', elite:true, label:'精英·追猎残响', enemyType:'track', waves:2, count:1, enemyHP:95, enemyInterval:3.0, enemyDmgMult:2.0, hardMode:true,
+      desc:'深海的精英残响。追踪弹更快更狠，击败可得丰厚碎片。' },
+    { id:'relite2', type:'combat', elite:true, label:'精英·齐射阵列', enemyType:'volley', waves:2, count:3, enemyHP:110, enemyInterval:5.0, enemyDmgMult:1.8, hardMode:true,
+      desc:'精英级的齐射编队，火力压制。击败可得丰厚碎片。' },
+  ],
 };
 
 // 肉鸽地图结构模板 — 三层段，每层段 = 若干普通房 + 一个Boss（遗憾主题递进）
@@ -553,6 +643,7 @@ const ROGUELIKE_MAP_TEMPLATE = {
         { type: 'combat' }, { type: 'shop' }, { type: 'combat' },
         { type: 'branch', branchTypes: ['event', 'treasure'] },
         { type: 'combat' }, { type: 'rest' }, { type: 'combat' },
+        { type: 'branch', branchTypes: ['elite', 'combat'] },   // v5.1 段末 Boss 前精英强度检查
       ],
     },
     {
@@ -564,6 +655,7 @@ const ROGUELIKE_MAP_TEMPLATE = {
         { type: 'branch', branchTypes: ['event', 'treasure'] },
         { type: 'combat' }, { type: 'shop' }, { type: 'combat' }, { type: 'rest' },
         { type: 'branch', branchTypes: ['event', 'shop'] }, { type: 'combat' },
+        { type: 'branch', branchTypes: ['elite', 'combat'] },   // v5.1 段末 Boss 前精英强度检查
       ],
     },
     {
@@ -574,7 +666,37 @@ const ROGUELIKE_MAP_TEMPLATE = {
         { type: 'combat' },
         { type: 'branch', branchTypes: ['event', 'treasure'] },
         { type: 'combat' }, { type: 'shop' }, { type: 'combat' }, { type: 'rest' },
+        { type: 'branch', branchTypes: ['elite', 'combat'] },   // v5.1 段末 Boss 前精英强度检查
       ],
     },
   ],
 };
+
+// ═══════════════ 肉鸽变异（v5.2）═══════════════
+// 每局开局三选一，作用于整局。effects 用 key→value（仿 ECHO_DEFS），消费点通过 variantMod(key) 读取。
+// 每个变异 = 正 + 负，制造抉择。解锁字段保留（后续通关解锁强力变异用）。
+const VARIANT_DEFS = {
+  fissure:   { id:'fissure', name:'裂隙加深', icon:'裂',
+    effects:{ enemyDmgUp:0.15, shardMult:0.30 },
+    desc:'深海的裂缝渗入敌心——敌人伤害+15%，但碎片获得+30%。' },
+  wordrot:   { id:'wordrot', name:'词元枯竭', icon:'枯',
+    effects:{ noiseUp:0.10, shopDiscount:0.20 },
+    desc:'干扰字更多了，但商店更便宜（-20%）。' },
+  elitehost: { id:'elitehost', name:'精英入侵', icon:'兵',
+    effects:{ eliteForce:1, eliteRewardMult:0.50 },
+    desc:'每段必出精英，精英奖励+50%——用战功换碎片。' },
+  stilldeep: { id:'stilldeep', name:'寂静深海', icon:'寂',
+    effects:{ shieldDecayPause:1, shieldDown:5 },
+    desc:'护盾不再自然衰减，但护盾上限-5。' },
+  erosion:   { id:'erosion', name:'记忆磨损', icon:'蚀',
+    effects:{ echoCardsDown:1, bossEchoUp:0.20 },
+    desc:'遗响三选一只给两张，但 Boss 掉遗响概率+20%。' },
+  bleak:     { id:'bleak', name:'荒芜', icon:'荒',
+    effects:{ healDown:0.3, atkDmgUp:0.12 },
+    desc:'回复量-30%，但攻字伤害+12%——以血换刀。' },
+};
+
+/** v5.3 第一章是否已通关（totalClears 跨局持久化）。未通关时隐藏高阶内容：肉鸽变异三选一 + 地图精英 */
+function ch1Cleared() {
+  return typeof totalClears !== 'undefined' && totalClears >= 1;
+}

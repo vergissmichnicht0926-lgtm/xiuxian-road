@@ -37,6 +37,7 @@ let zeroSolidified = false;       // 零凝实态（恢复力量后形体更完�
 let _pendingHubSkit = false;      // 成功返回Hub时待触发的一次性小剧情标志（showRunSummary(true) 设置）
 let ch1SkitsDone = [];            // 已触发过的小剧情编号（存档持久化，一次性）
 let lastRunDied = false;          // 上一局肉鸽是否死亡（遗憾·装备残影房触发条件）
+let totalClears = 0;              // v5.2 累计通关次数（收集成就用，跨局持久化）
 
 // ── 自定义光标粒子 ──
 let cursorParticles = [];
@@ -399,6 +400,17 @@ function drawBackpackItems(ctx) {
             ctx.globalAlpha = item.alpha*(item._orbitBurst-0.5)*2*0.7;
             ctx.fillStyle = prof >= thr ? 'rgba(255,220,120,0.85)' : 'rgba(200,210,230,0.5)';
             ctx.fillText(prof >= thr ? `熟练 ${prof} · 已解锁开局池` : `熟练 ${prof}/${thr}`, item.x, item.y + orbitR + extraLine);
+            // v5.2 觉醒状态：熟练度达 AWAKEN_THRESHOLD 显示隐藏词缀
+            const awkThr = (typeof EQUIP_UNLOCK !== 'undefined' && EQUIP_UNLOCK.AWAKEN_THRESHOLD) ? EQUIP_UNLOCK.AWAKEN_THRESHOLD : 10;
+            if (typeof isAwakened === 'function' && isAwakened(cfg.id) && cfg.awaken) {
+              extraLine += 18;
+              ctx.fillStyle = 'rgba(255,210,140,0.95)';
+              ctx.fillText(`✦ 已觉醒 · ${cfg.awaken.desc}`, item.x, item.y + orbitR + extraLine);
+            } else if (prof >= awkThr) {
+              extraLine += 18;
+              ctx.fillStyle = 'rgba(255,220,140,0.5)';
+              ctx.fillText('✦ 觉醒 · 精通圆满', item.x, item.y + orbitR + extraLine);
+            }
           }
           ctx.restore();
         }
@@ -478,6 +490,8 @@ function update(dt) {
       if (mapTransitionAlpha >= 1) { mapTransitionAlpha = 1; mapTransitionDir = 0; }
     }
   }
+
+  if(menuOpen) return; // v5.3 设置/帮助打开时冻结游戏（左下角「菜单」随时可调）
 
   if(backpackOpen) {
     updateBackpackItems();
@@ -717,8 +731,11 @@ function update(dt) {
 
   // 护盾衰减
   if (hasShield && shieldHP > 0) {
-    shieldDecayTimer += dt;
-    if (shieldDecayTimer > 5.0) { shieldDecayTimer = 0; shieldHP = Math.max(0, shieldHP - 1); updatePlayerUI(); }
+    // v5.2 寂静深海变异：护盾不再自然衰减
+    if (!(typeof variantMod === 'function' && variantMod('shieldDecayPause'))) {
+      shieldDecayTimer += dt;
+      if (shieldDecayTimer > 5.0) { shieldDecayTimer = 0; shieldHP = Math.max(0, shieldHP - 1); updatePlayerUI(); }
+    }
   } else { shieldDecayTimer = 0; }
 
   // 焚天「炎」debuff
@@ -727,9 +744,10 @@ function update(dt) {
     blazeTimer -= dt;
     // 每秒造成灼烧伤害
     if (Math.floor(blazeTimer * 10) !== Math.floor((blazeTimer + dt) * 10)) {
-      // 炎流派协同：灼烧伤害加成（schoolMod 定义在 echo.js）
+      // 炎流派协同：灼烧伤害加成（schoolMod 定义在 echo.js）；v5.2 焚天觉醒炎爆+50%
+      const _blazeAwk = (playerWeapon && playerWeapon.awaken && playerWeapon.awaken.blazeDmgUp && typeof isAwakened === 'function' && isAwakened(playerWeapon.id)) ? playerWeapon.awaken.blazeDmgUp : 0;
       const blazeDmg = Math.floor((playerWeapon ? playerWeapon.damage : 5) * 0.5
-        * (1 + (typeof schoolMod==='function'?schoolMod('blazeDmgMult','blaze'):0)));
+        * (1 + (typeof schoolMod==='function'?schoolMod('blazeDmgMult','blaze'):0) + _blazeAwk));
       if (bossActive && typeof damageBoss === 'function') {
         // Boss战：走damageBoss，复用20%逃跑/假撤退阈值与defeat判定（灼烧也能击杀Boss）
         if (bossState && bossState.hp > 0) damageBoss(blazeDmg, 1);
@@ -1242,8 +1260,21 @@ canvas.addEventListener('click',e=>{
     return;
   }
   // CSS缩放坐标修正
-  const cx = canvasZoom!==1 ? (e.clientX-W/2)/canvasZoom+W/2 : e.clientX;
-  const cy = canvasZoom!==1 ? (e.clientY-H/2)/canvasZoom+H/2 : e.clientY;
+  let cx = canvasZoom!==1 ? (e.clientX-W/2)/canvasZoom+W/2 : e.clientX;
+  let cy = canvasZoom!==1 ? (e.clientY-H/2)/canvasZoom+H/2 : e.clientY;
+  // v5.3 修：锁定期（执念锁链/心牢）可见光标被 clamp 到锁圈，但点击用的是物理坐标 → 点「断」对不上。
+  // 将点击坐标同样 clamp 到锁圈，让点击作用于玩家看到的光标位置。
+  if (typeof bossActive !== 'undefined' && bossActive && typeof bossState !== 'undefined' && bossState
+      && (bossState._heartLock || (bossState._gripChain && bossState._gripChain.phase === 'locked'))) {
+    const _lk = bossState._heartLock
+      || { anchorX: bossState._gripChain.anchorX, anchorY: bossState._gripChain.anchorY, radius: bossState._gripChain.radius };
+    const _dx = cx - _lk.anchorX, _dy = cy - _lk.anchorY;
+    const _dist = Math.sqrt(_dx * _dx + _dy * _dy);
+    if (_dist > _lk.radius && _dist > 0.01) {
+      cx = _lk.anchorX + (_dx / _dist) * _lk.radius;
+      cy = _lk.anchorY + (_dy / _dist) * _lk.radius;
+    }
+  }
   // 忽略来自囊字DOM元素的点击（它有自己的listener）
   const pouchEl = document.getElementById('pouch-btn');
   if(pouchEl && (e.target===pouchEl || pouchEl.contains(e.target))) return;
@@ -1421,8 +1452,9 @@ window.addEventListener('keydown', e => {
   if(e.key === 'Escape'){
     if(typeof shopOpen !== 'undefined' && shopOpen){
       e.preventDefault();
-      if(typeof shopSelected !== 'undefined' && shopSelected) {
-        shopSelected = null;
+      if(typeof shopDetail !== 'undefined' && shopDetail) {
+        // 详情面板打开 → ESC 先返回列表
+        shopDetail = null;
       } else {
         if(typeof closeShop === 'function') closeShop();
         if(typeof shopRoomDone === 'function') shopRoomDone();
@@ -1477,6 +1509,7 @@ function saveGame() {
     zeroSolidified: typeof zeroSolidified !== 'undefined' ? zeroSolidified : false,
     ch1SkitsDone: typeof ch1SkitsDone !== 'undefined' ? ch1SkitsDone.slice() : [],
     lastRunDied: typeof lastRunDied !== 'undefined' ? lastRunDied : false,
+    totalClears: typeof totalClears !== 'undefined' ? totalClears : 0,
     achievements: typeof achievements !== 'undefined' ? achievements : {},
 
     // ── 游戏位置 ⭐ ──
@@ -1569,6 +1602,196 @@ function backToMenu() {
   document.getElementById('main-menu').classList.remove('hidden');
 }
 
+// ═══════════════ 设置面板（v5.2）═══════════════
+// 独立存档 key，不污染游戏档 SAVE_KEY（老档零影响）
+const SETTINGS_KEY = 'consciousness_sea_settings';
+let _settingsState = null;
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const s = raw ? JSON.parse(raw) : {};
+    return {
+      bgmVolume: typeof s.bgmVolume === 'number' ? s.bgmVolume : 0.2,
+      sfxVolume: typeof s.sfxVolume === 'number' ? s.sfxVolume : 0.8,
+      muted: !!s.muted,
+    };
+  } catch(e) { return { bgmVolume: 0.2, sfxVolume: 0.8, muted: false }; }
+}
+function saveSettings(st) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(st)); } catch(e) {}
+}
+function applySettingsToSound(st) {
+  if (typeof Sound === 'undefined') return;
+  if (Sound.setBGMVolume) Sound.setBGMVolume(st.bgmVolume);
+  if (Sound.setSfxVolume) Sound.setSfxVolume(st.sfxVolume);
+  if (Sound.setMuted) Sound.setMuted(st.muted);
+}
+
+let menuOpen = false; // v5.3 设置/帮助打开时冻结游戏（左下角「菜单」随时可调）
+function openSettings() {
+  menuOpen = true;
+  _settingsState = loadSettings();
+  const bgmEl = document.getElementById('set-bgm');
+  if (bgmEl) bgmEl.value = Math.round(_settingsState.bgmVolume * 100);
+  const sfxEl = document.getElementById('set-sfx');
+  if (sfxEl) sfxEl.value = Math.round(_settingsState.sfxVolume * 100);
+  const muteEl = document.getElementById('set-muted');
+  if (muteEl) { muteEl.textContent = _settingsState.muted ? '开' : '关'; muteEl.classList.toggle('on', _settingsState.muted); }
+  const diffEls = document.querySelectorAll('#set-diff .diff-chip');
+  diffEls.forEach(el => el.classList.toggle('sel', Number(el.dataset.d) === difficulty));
+  document.getElementById('settings-screen').classList.remove('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiOpen) Sound.uiOpen();
+}
+function closeSettings() {
+  menuOpen = false;
+  document.getElementById('settings-screen').classList.add('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiClose) Sound.uiClose();
+}
+function onSettingBGM(v) {
+  if (!_settingsState) _settingsState = loadSettings();
+  _settingsState.bgmVolume = Number(v) / 100;
+  if (typeof Sound !== 'undefined' && Sound.setBGMVolume) Sound.setBGMVolume(_settingsState.bgmVolume);
+  saveSettings(_settingsState);
+}
+function onSettingSFX(v) {
+  if (!_settingsState) _settingsState = loadSettings();
+  _settingsState.sfxVolume = Number(v) / 100;
+  if (typeof Sound !== 'undefined' && Sound.setSfxVolume) Sound.setSfxVolume(_settingsState.sfxVolume);
+  saveSettings(_settingsState);
+}
+function onSettingMuted() {
+  if (!_settingsState) _settingsState = loadSettings();
+  _settingsState.muted = !_settingsState.muted;
+  if (typeof Sound !== 'undefined' && Sound.setMuted) Sound.setMuted(_settingsState.muted);
+  const el = document.getElementById('set-muted');
+  if (el) { el.textContent = _settingsState.muted ? '开' : '关'; el.classList.toggle('on', _settingsState.muted); }
+  saveSettings(_settingsState);
+}
+function onSettingDiff(idx) {
+  difficulty = idx;
+  // 潜航中切换难度：同步当前威胁等级；未潜航则由进房时按层重算
+  if (typeof THREAT !== 'undefined') {
+    const base = THREAT.BASE[idx] || 2;
+    if (typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap && typeof currentDiveRoom !== 'undefined' && currentDiveRoom && currentDiveRoom.layer) {
+      const rate = (typeof getThreatGrowthRate === 'function') ? getThreatGrowthRate() : 1;
+      threatLevel = Math.min(10, base + (currentDiveRoom.layer - 1) * THREAT.PER_LAYER * rate);
+    } else if (typeof threatLevel !== 'undefined') {
+      threatLevel = base;
+    }
+  }
+  if (typeof saveGame === 'function') saveGame();
+  const diffEls = document.querySelectorAll('#set-diff .diff-chip');
+  diffEls.forEach(el => el.classList.toggle('sel', Number(el.dataset.d) === idx));
+  const toast = document.getElementById('save-toast');
+  if (toast) {
+    // v5.3 提示需刷新浏览器生效（难度改动涉及本局数值，刷新后随存档载入）
+    const dname = (typeof DIFFICULTY !== 'undefined' && DIFFICULTY[idx]) ? DIFFICULTY[idx].name : idx;
+    toast.textContent = `难度已调整为「${dname}」· 刷新浏览器后生效`;
+    toast.classList.add('show');
+    clearTimeout(toast._timeout);
+    toast._timeout = setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+}
+function openHelp() {
+  menuOpen = true;
+  document.getElementById('help-screen').classList.remove('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiOpen) Sound.uiOpen();
+}
+function closeHelp() {
+  menuOpen = false;
+  document.getElementById('help-screen').classList.add('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiClose) Sound.uiClose();
+}
+function confirmNewGame() {
+  if (!window.confirm('重开新档将清空全部进度并刷新浏览器，确定吗？')) return;
+  try { localStorage.removeItem(SAVE_KEY); } catch(e) {}
+  if (typeof BESTIARY_KEY !== 'undefined') { try { localStorage.removeItem(BESTIARY_KEY); } catch(e) {} }
+  try { localStorage.removeItem(SETTINGS_KEY); } catch(e) {}
+  location.reload();
+}
+
+// ═══════════════ Boss测试通道（v5.3 调试用）═══════════════
+// 主菜单「测试·Boss」→ 选 Boss → 直接开战。复刻 _resumeBossHan 的最小开战路径，
+// 走真实 startRoom → startBossRoom → initBoss 链路（含第一章 Boss 入场对话/BGM）。
+function openBossTest() {
+  document.getElementById('bosstest-screen').classList.remove('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiOpen) Sound.uiOpen();
+}
+function closeBossTest() {
+  document.getElementById('bosstest-screen').classList.add('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiClose) Sound.uiClose();
+}
+function startTestBoss(key) {
+  // 隐藏所有入口覆盖层
+  document.getElementById('main-menu').classList.add('hidden');
+  document.getElementById('bosstest-screen').classList.add('hidden');
+  document.getElementById('difficulty-screen').classList.add('hidden');
+  document.getElementById('settings-screen').classList.add('hidden');
+  menuOpen = false;
+
+  // 主菜单路径 Dialogue 未初始化（正常 init 只在 startPrologue/resume 调用）
+  if (typeof Dialogue !== 'undefined' && typeof Dialogue.init === 'function') Dialogue.init();
+
+  // 进入潜航战斗态（复刻 _resumeBossHan）
+  prologuePhase = PROLOGUE.DIVING;
+  isRoguelikeMap = true;          // 走第一章 Boss 对话/机制
+  mapActive = false;
+  currentDiveRoom = null;
+  if (typeof Tutorial !== 'undefined') Tutorial.enterPhase(PHASE.BATTLE);
+
+  // 玩家状态（初始装备加载时已就绪：beginner_brush / thin_silk / concentration）
+  if (typeof playerHP !== 'undefined') { playerHP = playerMaxHP = 100; updatePlayerUI(); }
+  if (typeof shards !== 'undefined') { shards = 300; updateShardsDisplay(); }
+  battleWords = [];
+  particles = [];
+  if (typeof enemyEntity !== 'undefined') enemyEntity = null;
+  if (typeof threatLevel !== 'undefined' && typeof THREAT !== 'undefined') threatLevel = THREAT.BASE[difficulty] || 2;
+
+  // 战斗UI
+  document.getElementById('enemy-zone').style.opacity = '0';
+  document.getElementById('player-zone').style.opacity = '1';
+  document.getElementById('stage-hint').style.opacity = '0';
+
+  // Boss房间 → 真实链路
+  const room = { id:'bosstest', type:'boss', bossKey:key, layer:3, label:'测试·Boss', desc:'测试通道直达。' };
+  if (typeof startRoom === 'function') startRoom(room);
+  else if (typeof initBoss === 'function') initBoss(key);
+}
+
+// ═══════════════ 肉鸽变异选择（v5.2）═══════════════
+// 开局三选一（VARIANT_DEFS 随机抽 3 个），选完作用于整局（variantMod 读取）
+let variantChoiceActive = false;
+function openVariantChoice() {
+  if (typeof VARIANT_DEFS === 'undefined') return;
+  const keys = Object.keys(VARIANT_DEFS);
+  const shuffled = [...keys].sort(() => Math.random() - 0.5).slice(0, 3);
+  const cont = document.getElementById('variant-cards');
+  if (!cont) return;
+  cont.innerHTML = shuffled.map(id => {
+    const d = VARIANT_DEFS[id];
+    return `<div class="variant-card" onclick="chooseVariant('${id}')">
+      <div class="variant-icon">${d.icon}</div>
+      <div class="variant-name">${d.name}</div>
+      <div class="variant-desc">${d.desc}</div>
+    </div>`;
+  }).join('');
+  variantChoiceActive = true;
+  document.getElementById('variant-screen').classList.remove('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiOpen) Sound.uiOpen();
+}
+function chooseVariant(id) {
+  if (typeof runVariant !== 'undefined') runVariant = id;
+  variantChoiceActive = false;
+  document.getElementById('variant-screen').classList.add('hidden');
+  if (typeof Sound !== 'undefined' && Sound.uiOpen) Sound.uiOpen();
+  if (typeof saveGame === 'function') saveGame();
+  // 精英入侵：地图已在地图生成前弹选择后生成，强制重建使「额外精英」生效
+  if (typeof variantMod === 'function' && variantMod('eliteForce') && typeof generateRoguelikeMap === 'function') {
+    generateRoguelikeMap();
+  }
+}
+
 function continueGame() {
   const save = loadGame();
   if(!save) {
@@ -1612,6 +1835,7 @@ function resumeFromSave(save) {
   if (typeof save.zeroSolidified !== 'undefined') zeroSolidified = save.zeroSolidified;
   if (Array.isArray(save.ch1SkitsDone) && typeof ch1SkitsDone !== 'undefined') ch1SkitsDone = save.ch1SkitsDone.slice();
   if (typeof save.lastRunDied !== 'undefined') lastRunDied = save.lastRunDied;
+  if (typeof save.totalClears !== 'undefined') totalClears = save.totalClears;
   if (save.achievements && typeof achievements !== 'undefined') achievements = save.achievements;
 
   // ── 基础初始化 ──
@@ -2284,6 +2508,7 @@ function startPrologue() {
   uniqueEventsDone = []; // 新档重置独特事件标记
   achievements = {}; // 新档重置成就（成就进主存档，随新档清空）
   lastRunDied = false; // 新档重置上局死亡标记
+  totalClears = 0; // v5.2 新档重置累计通关次数
   zeroSolidified = false; // 新档重置零凝实态
   if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合
   // 应用永久升级（新游戏时为空，无效果）
@@ -2322,22 +2547,35 @@ function showRunSummary(victory) {
 
   // ── 结算（仅死亡/通关；主动返回不调本函数）──
   let soulReward = 0;
+  // v5.1 结晶增幅（工坊「结晶增幅」+10%/级）
+  const soulMult = (typeof getUpgradeLevel === 'function') ? (1 + (getUpgradeLevel('soulBoost') || 0) * 0.1) : 1;
   if (victory) {
     // 通关：熟练度 + 货币（按战绩加成）
     soulReward = (typeof RUN_REWARDS !== 'undefined')
       ? RUN_REWARDS.CLEAR_BASE + (maxLayerReached || 1) * RUN_REWARDS.PER_LAYER
         + (runEliteKills || 0) * RUN_REWARDS.PER_ELITE + (runBossKills || 0) * RUN_REWARDS.PER_BOSS
       : 10;
+    soulReward = Math.floor(soulReward * soulMult);
     if (typeof soulCrystals !== 'undefined') soulCrystals += soulReward;
     if (typeof settleEquipGains === 'function') settleEquipGains(); // 本局装备熟练度入账
   } else {
-    // 死亡：只给货币，熟练度作废；记录"上局死亡"（遗憾·装备残影房触发条件）
+    // 死亡：只给货币，熟练度作废；v5.1 死亡保留部分 Boss 收益；记录"上局死亡"（遗憾·装备残影房触发条件）
     soulReward = (typeof RUN_REWARDS !== 'undefined')
       ? RUN_REWARDS.DEATH_BASE + (runEliteKills || 0) * RUN_REWARDS.PER_ELITE_DEATH
+        + (runBossKills || 0) * (RUN_REWARDS.PER_BOSS_DEATH || 0)
       : 5;
+    soulReward = Math.floor(soulReward * soulMult);
     if (typeof soulCrystals !== 'undefined') soulCrystals += soulReward;
     if (typeof lastRunDied !== 'undefined') lastRunDied = true;
   }
+  // v5.2 收藏线：累计通关 + 收集成就 + 遗响集齐奖励（成就做一次性标记）
+  if (victory && typeof totalClears !== 'undefined') totalClears++;
+  if (typeof unlockAchievement === 'function') {
+    if (totalClears >= 1) unlockAchievement('ach_clear_1');
+    if (totalClears >= 10) unlockAchievement('ach_clear_10');
+  }
+  if (typeof checkCollectionAchievements === 'function') checkCollectionAchievements();
+  if (typeof checkRelicAllReward === 'function') checkRelicAllReward();
   if (typeof saveGame === 'function') saveGame();
 
   // ── 填充 UI ──
@@ -2501,6 +2739,8 @@ pouchBtn.addEventListener('click', (e) => {
 // 检查存档，更新继续按钮状态和局外货币信息
 (function initMenu(){
   try {
+  // v5.2：应用音频设置（音量/静音），独立于游戏存档
+  applySettingsToSound(loadSettings());
   const btnContinue = document.getElementById('btn-continue');
   const saveInfo = document.getElementById('save-info');
   const save = loadGame();

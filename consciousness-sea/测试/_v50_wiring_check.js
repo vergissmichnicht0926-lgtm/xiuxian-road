@@ -18,7 +18,8 @@ const ok = (c, m) => { if (!c) errors.push(m); };
 // ── ① grantShards 的 shardMult 接线（从 shop.js 源码提取公式验证）──
 {
   const src = fs.readFileSync(path.join(dir, 'shop.js'), 'utf8');
-  const m = src.match(/const mult = 1 \+ \(typeof echoMod === 'function' \? \(echoMod\('shardMult'\) \|\| 0\) : 0\);\s*if \(mult !== 1\) amount = Math\.floor\(amount \* mult\);/);
+  // v5.2 公式改为多行（追加 variantMod shardMult 叠加），用宽松正则验证接线存在
+  const m = src.match(/const mult = 1 \+ \(typeof echoMod === 'function' \? \(echoMod\('shardMult'\) \|\| 0\) : 0\)/) && src.match(/if \(mult !== 1\) amount = Math\.floor\(amount \* mult\)/);
   ok(!!m, 'grantShards 应含 shardMult 接线（mult 公式 + amount 放大）');
 
   // 模拟验证数值：echoMod('shardMult')=0.2 → 100 碎片 → 120

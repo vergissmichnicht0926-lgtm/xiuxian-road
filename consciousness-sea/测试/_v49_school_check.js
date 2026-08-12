@@ -71,9 +71,9 @@ if (ECHO_DEFS) {
   ok(ECHO_DEFS.glaze_echo.effects.slowBonus === 0.20, `凝冰之忆 slowBonus 应=0.20`);
   ok(ECHO_DEFS.cinder_echo.effects.blazeBonus === 12, `燔薪之忆 blazeBonus 应=12`);
   ok(ECHO_DEFS.volt_echo.effects.comboBoost === 0.10, `惊蛰之忆 comboBoost 应=0.10`);
-  // 7. 遗响总数 24
+  // 7. 遗响总数 28（v5.2 加 4 个流派遗响：镜返/辉光/蛇信/蚀骨忆）
   const total = Object.keys(ECHO_DEFS).length;
-  ok(total === 24, `遗响总数 ${total} ≠ 24`);
+  ok(total === 28, `遗响总数 ${total} ≠ 28`);
 } else {
   console.log('⚠️ echo.js 未能在 vm 完整加载（运行时依赖多），流派遗响断言跳过');
 }

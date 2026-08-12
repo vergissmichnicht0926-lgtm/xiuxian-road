@@ -39,6 +39,26 @@ canvas { display:block; position:absolute; top:0; left:0; z-index:10; transition
   cursor:not-allowed;
 }
 
+/* ── Boss测试通道（v5.3 调试用）── */
+#boss-test-link {
+  margin-top:36px; color:rgba(160,180,210,0.22); font-size:12px;
+  letter-spacing:0.15em; cursor:pointer; transition:color 0.3s;
+}
+#boss-test-link:hover { color:rgba(180,215,255,0.55); }
+#bosstest-screen {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:205;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center,#0a0a20 0%,#020208 100%);
+  transition:opacity 0.4s,visibility 0.4s;
+}
+#bosstest-screen.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+#bosstest-title {
+  color:#ff9955; font-size:16px; letter-spacing:0.4em;
+  margin-bottom:36px;
+}
+#bosstest-btns { display:flex; flex-direction:column; align-items:center; }
+#bosstest-btns .diff-btn { width:250px; }
+
 /* ── 难度选择 ── */
 #difficulty-screen {
   position:fixed; top:0;left:0;width:100%;height:100%; z-index:180;
@@ -236,7 +256,7 @@ canvas { display:block; position:absolute; top:0; left:0; z-index:10; transition
 #stun-overlay { position:fixed; top:0;left:0;width:100%;height:100%;
   background:rgba(255,0,0,0.06); pointer-events:none; z-index:20; opacity:0; transition:opacity 0.15s; }
 #stun-overlay.active { opacity:1; }
-#combo-display { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) translateY(-80px);
+#combo-display { position:fixed; bottom:170px; left:50%; transform:translateX(-50%);
   pointer-events:none; z-index:10; text-align:center; opacity:0; transition:opacity 0.3s; }
 #combo-display.show { opacity:1; }
 #combo-count { font-size:60px; font-weight:bold; letter-spacing:0.05em; }
@@ -277,6 +297,18 @@ canvas { display:block; position:absolute; top:0; left:0; z-index:10; transition
 #pouch-btn:hover, #pouch-btn.active {
   color:rgba(220,200,150,0.8);
   text-shadow:0 0 18px rgba(200,180,120,0.4);
+}
+
+/* ── 菜单（v5.3 左下角常驻，随时打开设置）── */
+#menu-btn {
+  position:fixed; bottom:90px; left:28px; z-index:30;
+  color:rgba(170,190,220,0.35); font-size:18px; letter-spacing:0.2em;
+  cursor:pointer; font-family:"Noto Serif SC","SimSun",serif;
+  transition:all 0.5s; pointer-events:auto;
+}
+#menu-btn:hover {
+  color:rgba(180,215,255,0.8);
+  text-shadow:0 0 18px rgba(140,190,255,0.4);
 }
 
 /* ── 背包 ── */
@@ -476,3 +508,86 @@ canvas { display:block; position:absolute; top:0; left:0; z-index:10; transition
   max-width: 700px; line-height: 1.8;
 }
 #hug-text.show { opacity: 1; }
+
+/* ── 设置面板（v5.2）── */
+#settings-screen {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:220;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center,#0a0a20 0%,#020208 100%);
+  transition:opacity 0.5s,visibility 0.5s;
+}
+#settings-screen.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+#settings-title {
+  color:rgba(180,200,240,0.7); font-size:18px; letter-spacing:0.4em; margin-bottom:32px;
+}
+.setting-row {
+  display:flex; align-items:center; justify-content:space-between;
+  width:360px; margin:10px 0; padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,0.05);
+}
+.setting-label { color:rgba(200,220,240,0.6); font-size:14px; letter-spacing:0.1em; }
+.setting-row input[type=range] {
+  width:190px; background:transparent; accent-color:#88bbee;
+}
+.setting-toggle {
+  width:48px; padding:5px 0; text-align:center;
+  border:1px solid rgba(255,255,255,0.15); border-radius:4px;
+  color:rgba(200,220,240,0.7); font-size:13px; cursor:pointer; font-family:inherit;
+  transition:all 0.3s;
+}
+.setting-toggle.on { border-color:rgba(120,180,255,0.6); color:#9bd0ff; }
+.diff-chip {
+  display:inline-block; padding:5px 14px; margin:0 4px;
+  border:1px solid rgba(255,255,255,0.12); border-radius:4px;
+  color:rgba(200,220,240,0.5); font-size:12px; cursor:pointer; font-family:inherit;
+  transition:all 0.3s;
+}
+.diff-chip:hover { border-color:rgba(140,190,255,0.5); color:#c8ddf8; }
+.diff-chip.sel { border-color:rgba(140,190,255,0.8); color:#9bd0ff; background:rgba(100,160,220,0.12); }
+
+/* ── 帮助面板（v5.2）── */
+#help-screen {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:230;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center,#0a0a20 0%,#020208 100%);
+  transition:opacity 0.5s,visibility 0.5s;
+}
+#help-screen.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+#help-title {
+  color:rgba(180,200,240,0.7); font-size:18px; letter-spacing:0.4em; margin-bottom:32px;
+}
+#help-content {
+  color:rgba(200,220,240,0.55); font-size:14px; line-height:2.4em; letter-spacing:0.08em;
+  text-align:center; margin-bottom:28px;
+}
+
+/* ── 肉鸽变异三选一（v5.2）── */
+#variant-screen {
+  position:fixed; top:0;left:0;width:100%;height:100%; z-index:240;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(2,2,18,0.95);
+  transition:opacity 0.4s,visibility 0.4s;
+}
+#variant-screen.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+#variant-title {
+  color:rgba(180,200,240,0.8); font-size:20px; letter-spacing:0.4em; margin-bottom:8px;
+}
+#variant-hint {
+  color:rgba(140,160,200,0.4); font-size:12px; letter-spacing:0.2em; margin-top:28px;
+}
+#variant-cards {
+  display:flex; gap:24px; margin-top:32px;
+}
+.variant-card {
+  width:200px; min-height:150px; padding:20px 16px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(255,230,180,0.05); border:1px solid rgba(255,200,140,0.25); border-radius:8px;
+  cursor:pointer; transition:all 0.3s; text-align:center;
+}
+.variant-card:hover {
+  background:rgba(255,230,180,0.10); border-color:rgba(255,220,150,0.7);
+  transform:scale(1.04);
+}
+.variant-icon { font-size:34px; margin-bottom:12px; }
+.variant-name { color:#ffddaa; font-size:16px; letter-spacing:0.2em; margin-bottom:10px; }
+.variant-desc { color:rgba(200,215,240,0.65); font-size:11px; line-height:1.7; }

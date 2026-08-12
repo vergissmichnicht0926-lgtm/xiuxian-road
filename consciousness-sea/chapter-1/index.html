@@ -8,13 +8,28 @@
 </head>
 <body>
 
-<!-- 主菜单 -->
+<!-- 主菜单（v5.3：设置入口移至左下角常驻「菜单」按钮，主菜单不再放设置） -->
 <div id="main-menu">
   <div id="menu-title">意识之海</div>
   <div id="menu-subtitle">文字即一切</div>
   <div id="save-info"></div>
   <div class="menu-btn" id="btn-new-game" onclick="showDifficulty()">新的游戏</div>
   <div class="menu-btn" id="btn-continue" onclick="continueGame()">继续游戏</div>
+  <!-- v5.3 Boss测试通道（调试用，正常游玩忽略） -->
+  <div id="boss-test-link" onclick="openBossTest()">测试 · Boss</div>
+</div>
+
+<!-- v5.3 Boss测试通道选择（调试用） -->
+<div id="bosstest-screen" class="hidden">
+  <div id="bosstest-title">Boss 测试通道</div>
+  <div id="bosstest-btns">
+    <div class="diff-btn" onclick="startTestBoss('recall')">忆<span class="diff-label">浅层 Boss · 余音回响</span></div>
+    <div class="diff-btn" onclick="startTestBoss('obsess')">执<span class="diff-label">中层 Boss · 执念锁链</span></div>
+    <div class="diff-btn" onclick="startTestBoss('regret_abyss')">憾<span class="diff-label">深层碎片 · 双核心</span></div>
+    <div class="diff-btn" onclick="startTestBoss('yi_abyss')">遗<span class="diff-label">深层碎片 · 千金散尽</span></div>
+    <div class="diff-btn" onclick="startTestBoss('regretful')">遗憾<span class="diff-label">深层完全体 · 悔业障</span></div>
+  </div>
+  <div class="back-link" onclick="closeBossTest()">← 返回</div>
 </div>
 
 <!-- 难度选择 -->
@@ -30,6 +45,60 @@
     深层潜航<span class="diff-label">敌人较强 · 挑战自我</span>
   </div>
   <div class="back-link" onclick="backToMenu()">← 返回</div>
+</div>
+
+<!-- 设置（v5.2） -->
+<div id="settings-screen" class="hidden">
+  <div id="settings-title">设置</div>
+  <div class="setting-row">
+    <span class="setting-label">BGM 音量</span>
+    <input type="range" id="set-bgm" min="0" max="100" value="20" oninput="onSettingBGM(this.value)">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">音效音量</span>
+    <input type="range" id="set-sfx" min="0" max="100" value="80" oninput="onSettingSFX(this.value)">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">静音</span>
+    <div class="setting-toggle" id="set-muted" onclick="onSettingMuted()">关</div>
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">难度</span>
+    <div id="set-diff">
+      <span class="diff-chip" data-d="0" onclick="onSettingDiff(0)">浅层</span>
+      <span class="diff-chip" data-d="1" onclick="onSettingDiff(1)">标准</span>
+      <span class="diff-chip" data-d="2" onclick="onSettingDiff(2)">深层</span>
+    </div>
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">其他</span>
+    <div id="set-actions">
+      <span class="diff-chip" onclick="openHelp()">帮助</span>
+      <span class="diff-chip" onclick="confirmNewGame()">重开新档</span>
+    </div>
+  </div>
+  <div class="back-link" onclick="closeSettings()">← 返回</div>
+</div>
+
+<!-- 帮助（v5.2） -->
+<div id="help-screen" class="hidden">
+  <div id="help-title">操作说明</div>
+  <div id="help-content">
+    点击「攻」字攻击敌人 · 点击「防」字获得护盾<br>
+    点击「符」字回复意识 · 收集技能字释放技能<br>
+    「囊」打开背包 · Tab / ESC 关闭 · F5 存档<br>
+    威胁等级随深度上升，越深越危险<br>
+    连击提升伤害，被打断会掉连击<br>
+    Boss 有专属机制，点击场上可点标记应对
+  </div>
+  <div class="back-link" onclick="closeHelp()">← 返回</div>
+</div>
+
+<!-- 肉鸽变异三选一（v5.2） -->
+<div id="variant-screen" class="hidden">
+  <div id="variant-title">深海变异 · 三选一</div>
+  <div id="variant-cards"></div>
+  <div id="variant-hint">选择一个变异，它将影响本局潜航 · <span class="back-link" onclick="chooseVariant(null)" style="display:inline;font-size:12px;">放弃变异</span></div>
 </div>
 
 <!-- 画布 -->
@@ -79,6 +148,9 @@
 
 <!-- 囊字 -->
 <div id="pouch-btn">囊</div>
+
+<!-- v5.3 菜单（左下角常驻，随时打开设置） -->
+<div id="menu-btn" onclick="openSettings()">菜单</div>
 
 <!-- 背包 -->
 <div id="backpack-overlay">

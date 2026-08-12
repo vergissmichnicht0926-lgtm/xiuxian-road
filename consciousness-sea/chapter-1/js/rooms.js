@@ -196,7 +196,11 @@ function buildCombatStats(room) {
     noiseRate: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].noiseRate : 0.15,
     speed: (typeof DIFFICULTY !== 'undefined' && typeof difficulty !== 'undefined') ? DIFFICULTY[difficulty].speed : 0.8,
   };
-  return (typeof applyThreatModifiers === 'function') ? applyThreatModifiers(baseStats) : baseStats;
+  const modified = (typeof applyThreatModifiers === 'function') ? applyThreatModifiers(baseStats) : baseStats;
+  // v5.1 威胁等级修复：把修正后的敌人伤害写回房间数据，供 enemyAttackMelee/enemyLaunchProjectiles 读取
+  // （原 applyThreatModifiers 返回的 enemyDmg 从未被消费 → 威胁等级/遗响 enemyDmgUp 对普通敌伤害无效）
+  if (room) room.enemyDmg = modified.enemyDmg;
+  return modified;
 }
 
 /** 战斗 — 噪点波次 */
@@ -232,6 +236,8 @@ function startCombatRoom(room) {
     const formationOpts = { layer: room.layer || 1, formation: pickFormation(1, room.layer || 1) };
     // 单敌房：固定 1 个、居中排列（放 split 分支前，split 房不带 count 字段不受影响）
     if (room.count === 1) { formationOpts.count = 1; formationOpts.formation = 'line'; }
+    // v5.1 精英房：显式 count>1 的编队（如「精英·齐射阵列」count:3 固定三人编队）
+    else if (room.count && room.count > 1) { formationOpts.count = room.count; }
     // 分裂型第一轮：1 个，血/伤 ×1（后续轮次由 startNextCombatWave 递增）
     if (room.enemyType === 'split' && typeof splitWaveParams === 'function') {
       const sp = splitWaveParams(1);
@@ -294,9 +300,15 @@ function checkCombatWave() {
     } else {
       // 全部波次完成 — 1秒等待后再进行奖励/返回判定
       roomCombatAllDone = false;
-      // 碎片奖励
+      // 碎片奖励（v5.1 精英房给更高奖励 ELITE_CLEAR；v5.2 精英入侵变异 eliteRewardMult 加成）
       if (typeof grantShards === 'function') {
-        grantShards(SHARD_REWARDS.COMBAT_CLEAR, W*0.5, H*0.35);
+        let reward = (currentDiveRoom && currentDiveRoom.elite)
+          ? (SHARD_REWARDS.ELITE_CLEAR || 40)
+          : SHARD_REWARDS.COMBAT_CLEAR;
+        if ((currentDiveRoom && currentDiveRoom.elite) && typeof variantMod === 'function' && variantMod('eliteRewardMult')) {
+          reward = Math.round(reward * (1 + variantMod('eliteRewardMult')));
+        }
+        grantShards(reward, W*0.5, H*0.35);
       }
       // 冻结敌人，防止0血怪物继续攻击
       enemyTimer = enemyInterval = 999;

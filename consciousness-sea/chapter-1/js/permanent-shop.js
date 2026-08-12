@@ -58,6 +58,21 @@ function applyPermanentUpgrades() {
     shards += 30;
     if (typeof updateShardsDisplay === 'function') updateShardsDisplay();
   }
+
+  // 初始护盾：每局开始带 5 盾/级（v5.1；护盾独立于HP，startRoguelikeDive 重置HP后仍生效）
+  const shieldLv = getUpgradeLevel('shieldStart');
+  if (shieldLv > 0) {
+    if (typeof hasShield !== 'undefined') hasShield = true;
+    if (typeof shieldHP !== 'undefined') shieldHP = (shieldHP || 0) + 5 * shieldLv;
+  }
+
+  // 记忆胎动：每局开局随机带一个普通遗响（v5.1；仅当局内尚无遗响时给，防读档/重复）
+  if (getUpgradeLevel('echoGift') > 0
+      && typeof grantEcho === 'function' && typeof rollRandomEcho === 'function'
+      && (!echoInventory || echoInventory.length === 0)) {
+    const echoId = rollRandomEcho('common');
+    if (echoId) grantEcho(echoId);
+  }
 }
 
 /** 获取威胁等级增长率（深海抗性修正） */

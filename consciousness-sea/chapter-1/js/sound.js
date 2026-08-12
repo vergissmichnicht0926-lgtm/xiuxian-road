@@ -12,7 +12,13 @@ const Sound = (()=>{
     return _masterGain;
   };
 
+  // v5.2 音量控制：SFX 独立音量 + 全局静音（BGM 走现有 setBGMVolume）
+  let _sfxVolume = 0.8;
+  let _muted = false;
+  function _sfx(v){ return Math.max(0, Math.min(1, (v || 0) * _sfxVolume)); }
+
   function blip(freq,type,noiseMix,dur,vol=1){
+    vol = _sfx(vol);
     const a=ac(), m=master(), now=a.currentTime;
     const g=a.createGain(); g.connect(m);
     g.gain.setValueAtTime(0.01,now); g.gain.linearRampToValueAtTime(vol*0.2,now+0.01);
@@ -27,14 +33,16 @@ const Sound = (()=>{
     if(freq){ const o=a.createOscillator();o.type=type||'sine';o.frequency.setValueAtTime(freq,now);o.frequency.exponentialRampToValueAtTime(freq*0.3,now+dur);o.connect(g);o.start(now);o.stop(now+dur); }
   }
   function sweep(fr,to,dur,type='sine',vol=1){
+    vol = _sfx(vol);
     const a=ac(), m=master(), now=a.currentTime;
     const g=a.createGain();g.connect(m);g.gain.setValueAtTime(vol*0.18,now);g.gain.exponentialRampToValueAtTime(0.001,now+dur);
     const o=a.createOscillator();o.type=type;o.frequency.setValueAtTime(fr,now);o.frequency.linearRampToValueAtTime(to,now+dur);o.connect(g);o.start(now);o.stop(now+dur);
   }
   function heartbeat(){
     const a=ac(), m=master(), now=a.currentTime;
+    const sv = _sfxVolume;
     [0,0.12].forEach(d=>{
-      const g=a.createGain();g.connect(m);g.gain.setValueAtTime(0.01,now+d);g.gain.linearRampToValueAtTime(0.25,now+d+0.04);g.gain.exponentialRampToValueAtTime(0.001,now+d+0.2);
+      const g=a.createGain();g.connect(m);g.gain.setValueAtTime(0.01*sv,now+d);g.gain.linearRampToValueAtTime(0.25*sv,now+d+0.04);g.gain.exponentialRampToValueAtTime(0.001,now+d+0.2);
       const o=a.createOscillator();o.type='sine';o.frequency.setValueAtTime(45,now+d);o.frequency.linearRampToValueAtTime(30,now+d+0.18);o.connect(g);o.start(now+d);o.stop(now+d+0.25);
     });
   }
@@ -294,7 +302,24 @@ const Sound = (()=>{
     _bgmVolume = v;
     if (_bgmCurrent && _bgmTracks[_bgmCurrent]) {
       const t = _bgmTracks[_bgmCurrent];
-      if (t.active) t[t.active].volume = v;
+      if (t.active) t[t.active].volume = _muted ? 0 : v;
+    }
+  }
+
+  // v5.2 全局静音：master gain（音效）归零 + 当前 BGM 归零；取消时恢复
+  function _setMuted(m) {
+    _muted = !!m;
+    const g = master();
+    if (_muted) {
+      g.gain.value = 0;
+      if (_bgmCurrent && _bgmTracks[_bgmCurrent] && _bgmTracks[_bgmCurrent].active) {
+        _bgmTracks[_bgmCurrent][_bgmTracks[_bgmCurrent].active].volume = 0;
+      }
+    } else {
+      g.gain.value = 0.2;
+      if (_bgmCurrent && _bgmTracks[_bgmCurrent] && _bgmTracks[_bgmCurrent].active) {
+        _bgmTracks[_bgmCurrent][_bgmTracks[_bgmCurrent].active].volume = _bgmVolume;
+      }
     }
   }
 
@@ -306,6 +331,12 @@ const Sound = (()=>{
     setBGMVolume(v)        { _bgmSetVolume(v); },
     startBGM(i)            { _bgmInit(); _bgmPlay('explore', 2.0); },
     setBGMIntensity(i)     { if (i > 0.5) _bgmPlay('boss', 1.2); else if (_bgmCurrent==='boss') _bgmPlay('explore', 2.0); },
+
+    // v5.2 音量/静音
+    setSfxVolume(v)        { _sfxVolume = Math.max(0, Math.min(1, v)); },
+    getSfxVolume()         { return _sfxVolume; },
+    setMuted(m)            { _setMuted(m); },
+    getMuted()             { return _muted; },
 
     // ── 战斗音效 ──
     // 战斗音效 — 主vol统一0.8（以attack为基准），副音0.55

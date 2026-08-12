@@ -124,6 +124,8 @@ function buildEnemyObj(hardMode, enemyType, x, y, hp, interval, idx, splitLevel)
     },
     stun: 0,          // 眩晕计时（>0 时不攻击、攻击计时暂停；鸡你太美定身）
     dot: null,        // 滞留伤害 { dmg, tick, timer, duration }（鸡你太美精神污染）
+    poison: 0,        // 叠毒层数（蚀骨武器：命中叠层，叠满爆发清零）
+    sunder: 0,        // 破甲层数（sunder buff：每层受击伤害+8%，最多5层）
     alive: true,
   };
 }
@@ -309,9 +311,29 @@ function getEquipLevel(key) { return (equipmentLevels && equipmentLevels[key]) |
 function getEquipMult(key) {
   return 1 + (getEquipLevel(key) - 1) * (typeof EQUIP_FUSION !== 'undefined' ? EQUIP_FUSION.PER_LEVEL_MULT : 0.25);
 }
-function getArmorDefense(armor) { return armor ? Math.floor(armor.defense * getEquipMult(armor.id)) : 0; }
+
+// v5.2 装备觉醒：熟练度达到 AWAKEN_THRESHOLD 解锁隐藏词缀
+function isAwakened(equipId) {
+  if (typeof equipProficiency === 'undefined' || typeof EQUIP_UNLOCK === 'undefined' || !equipId) return false;
+  return (equipProficiency[equipId] || 0) >= (EQUIP_UNLOCK.AWAKEN_THRESHOLD || 10);
+}
+
+function getArmorDefense(armor) {
+  if (!armor) return 0;
+  let d = Math.floor(armor.defense * getEquipMult(armor.id));
+  // v5.2 觉醒：减伤加成
+  if (armor.awaken && armor.awaken.defenseUp && isAwakened(armor.id)) d += armor.awaken.defenseUp;
+  return d;
+}
 function getShieldPerWord(armor) { return armor ? Math.floor((armor.shieldPerWord || 2) * getEquipMult(armor.id)) : 2; }
-function getMaxShieldCap(armor) { return armor ? Math.floor((armor.maxShield || 10) * getEquipMult(armor.id)) : 10; }
+function getMaxShieldCap(armor) {
+  const base = armor ? Math.floor((armor.maxShield || 10) * getEquipMult(armor.id)) : 10;
+  // v5.2 觉醒：盾上限加成（铁誓）
+  let cap = base;
+  if (armor && armor.awaken && armor.awaken.shieldUp && isAwakened(armor.id)) cap += armor.awaken.shieldUp;
+  // v5.2 寂静深海变异：护盾上限 -N
+  return Math.max(1, cap - (typeof variantMod === 'function' ? (variantMod('shieldDown') || 0) : 0));
+}
 function getTalismanHeal(t, which) {
   if (!t) return which === 'min' ? 3 : 7;
   return Math.floor((which === 'min' ? t.healMin : t.healMax) * getEquipMult(t.id));
@@ -526,17 +548,27 @@ function dealDamageToEnemy(e, dmg, isCombo, isAoe) {
 
   // 处刑 execute：20%血以下伤害翻倍
   if (hasWeaponBuff('execute') && e.maxHp > 0 && e.hp / e.maxHp < 0.20) final = Math.floor(final * 2);
-  // 专注 focus：连续命中同一目标递增（最多5层，换目标/死亡重置）
+  // 专注 focus：连续命中同一目标递增（最多5层，换目标/死亡重置；v5.2 玄夜觉醒层数5→8）
   if (hasWeaponBuff('focus')) {
-    if (_focusTarget === e.id) { _focusStacks = Math.min(5, _focusStacks + 1); final = Math.floor(final * (1 + _focusStacks * 0.08)); }
+    const focusMax = 5 + ((playerWeapon && playerWeapon.awaken && playerWeapon.awaken.focusMaxUp && isAwakened(playerWeapon.id)) ? playerWeapon.awaken.focusMaxUp : 0);
+    if (_focusTarget === e.id) { _focusStacks = Math.min(focusMax, _focusStacks + 1); final = Math.floor(final * (1 + _focusStacks * 0.08)); }
     else { _focusTarget = e.id; _focusStacks = 1; final = Math.floor(final * 1.08); }
   }
   // 风暴 tempest：AOE命中增伤
   if (isAoe && hasWeaponBuff('tempest')) final = Math.floor(final * 1.3);
-  // 雷流派协同：AOE 增伤（schoolMod 定义在 echo.js，运行时存在）
-  if (isAoe) final = Math.floor(final * (1 + (typeof schoolMod === 'function' ? schoolMod('aoeDmgMult', 'storm') : 0)));
-  // 护壁减半（穿透 buff 或 贯日固有 pierce 豁免）
-  if (e.type === 'shield' && !hasWeaponBuff('pierce')) final = Math.max(1, Math.floor(final * 0.5));
+  // 雷流派协同：AOE 增伤（schoolMod 定义在 echo.js，运行时存在）；v5.2 惊雷觉醒 AOE+15%
+  if (isAoe) {
+    let aoeMult = 1 + (typeof schoolMod === 'function' ? (schoolMod('aoeDmgMult', 'storm') || 0) : 0);
+    if (playerWeapon && playerWeapon.awaken && playerWeapon.awaken.aoeDmgUp && isAwakened(playerWeapon.id)) aoeMult += playerWeapon.awaken.aoeDmgUp;
+    final = Math.floor(final * aoeMult);
+  }
+  // 狂暴 rage（v5.2）：连击时攻字伤害+10%
+  if (hasWeaponBuff('rage') && isCombo) final = Math.floor(final * 1.10);
+  // 破甲 sunder（v5.2）：已有破甲层 → 每层受击伤害+8%（最多5层）
+  if (hasWeaponBuff('sunder') && e.sunder > 0) final = Math.floor(final * (1 + Math.min(5, e.sunder) * 0.08));
+  // 护壁减半（穿透 buff 或 贯日固有 pierce 豁免；v5.2 贯日觉醒完全无视）
+  const _pierceFull = playerWeapon && playerWeapon.awaken && playerWeapon.awaken.pierceFull && isAwakened(playerWeapon.id);
+  if (e.type === 'shield' && !hasWeaponBuff('pierce') && !_pierceFull) final = Math.max(1, Math.floor(final * 0.5));
 
   e.hp -= final;
   if (e.hp < 0) e.hp = 0;
@@ -560,13 +592,51 @@ function dealDamageToEnemy(e, dmg, isCombo, isAoe) {
     _chainGuard = false;
   }
 
-  // 汲取 leech：伤害回血（武器固有 leech 数值 或 汲取buff 默认15%）
+  // 汲取 leech：伤害回血（武器固有 leech 数值 或 汲取buff 默认15%；v5.2 饮血觉醒吸血15%→25%）
   let leechPct = 0;
-  if (hasWeaponBuff('leech')) leechPct = (playerWeapon && typeof playerWeapon.leech === 'number') ? playerWeapon.leech : 0.15;
+  if (hasWeaponBuff('leech')) {
+    leechPct = (playerWeapon && typeof playerWeapon.leech === 'number') ? playerWeapon.leech : 0.15;
+    if (playerWeapon && playerWeapon.awaken && playerWeapon.awaken.leechUp && isAwakened(playerWeapon.id)) leechPct += playerWeapon.awaken.leechUp;
+  }
   if (leechPct > 0) {
     const heal = Math.max(1, Math.floor(final * leechPct));
     playerHP = Math.min(playerMaxHP, playerHP + heal);
     updatePlayerUI();
+  }
+
+  // 破甲 sunder（v5.2）：命中叠层（本次命中后下一击开始受益）
+  if (hasWeaponBuff('sunder')) e.sunder = Math.min(5, (e.sunder || 0) + 1);
+  // 霜封 freeze（v5.2）：命中减速敌人（延长攻击间隔，复用霜序减速语义）
+  if (hasWeaponBuff('freeze') && e.alive) e.timer = Math.min((e.timer || 0) + 0.3, e.interval * 1.5);
+  // 曜刃 radiance（v5.2）：命中回盾（曜光流派的日冕之刃；觉醒回盾1→2）
+  if (playerWeapon && playerWeapon.radiance) {
+    const rUp = (playerWeapon.awaken && playerWeapon.awaken.radianceUp && isAwakened(playerWeapon.id)) ? playerWeapon.awaken.radianceUp : 0;
+    const maxShield = getMaxShieldCap(playerArmor) + (typeof echoMod === 'function' ? (echoMod('shieldMax') || 0) : 0);
+    shieldHP = Math.min(maxShield, (hasShield ? shieldHP : 0) + 1 + rUp);
+    hasShield = true;
+  }
+
+  // 叠毒爆发（蚀骨专属）：命中叠层，叠满 thresh 层爆出 burst 额外伤害并清零。
+  // 独立于 buff/连锁/汲取（毒是追加伤害，不走本击的连锁与吸血）；Boss 战走 damageBoss 天然豁免。
+  // v5.2：蚀毒协同（poisonSpeedUp 每击叠N层 / poisonBurstUp 毒爆+N）
+  if (playerWeapon && playerWeapon.poison && e.alive) {
+    const spd = 1 + (typeof echoMod === 'function' ? (echoMod('poisonSpeedUp') || 0) : 0)
+      + (typeof schoolMod === 'function' ? (schoolMod('poisonSpeedUp', 'poison') || 0) : 0);
+    e.poison = (e.poison || 0) + spd;
+    if (e.poison >= playerWeapon.poison.thresh) {
+      e.poison = 0;
+      const burst = (playerWeapon.poison.burst || 15)
+        + (typeof echoMod === 'function' ? (echoMod('poisonBurstUp') || 0) : 0)
+        + (typeof schoolMod === 'function' ? (schoolMod('poisonBurstUp', 'poison') || 0) : 0)
+        + ((playerWeapon.awaken && playerWeapon.awaken.poisonBurstUp && isAwakened(playerWeapon.id)) ? playerWeapon.awaken.poisonBurstUp : 0);
+      e.hp = Math.max(0, e.hp - burst);
+      particles.push(new DamageText(ent.x, ent.y - 46, `毒爆! -${burst}`, '#66dd88'));
+      for (let i = 0; i < 8; i++) particles.push(new HitParticle(ent.x, ent.y, '#66dd88', '毒'));
+      if (e.hp <= 0) {
+        e.alive = false;
+        if (e.elite) runEliteKills++; else runKills++;
+      }
+    }
   }
 }
 
@@ -600,7 +670,9 @@ function applyWeaponEffects() {
   // 霜序减速（对全体存活敌人生效，含遗响·减速加成 + 寒冰流派协同）
   if (playerWeapon.slow) {
     const slowAmt = 0.25 + (typeof echoMod==='function'?echoMod('slowBonus'):0)
-      + (typeof schoolMod==='function'?schoolMod('slowBonus','frost'):0);
+      + (typeof schoolMod==='function'?schoolMod('slowBonus','frost'):0)
+      // v5.2 觉醒：减速加成（霜序）
+      + ((playerWeapon.awaken && playerWeapon.awaken.slowUp && isAwakened(playerWeapon.id)) ? playerWeapon.awaken.slowUp : 0);
     for (const e of enemyList) {
       if (!e.alive) continue;
       e.timer = Math.min(e.timer + slowAmt, e.interval * 1.5);
@@ -618,8 +690,9 @@ function applyWeaponEffects() {
 
 /** 对玩家施加伤害：防御减伤 → 护盾吸收 → HP扣除，返回实际HP损失 */
 function applyDamageToPlayer(rawDmg) {
-  // 防御减伤（含遗响·减伤加成）
-  let dmg = Math.max(1, rawDmg - playerDefense - (typeof echoMod==='function'?echoMod('defenseFlat'):0));
+  // 防御减伤（含遗响·减伤加成 + 工坊「坚韧意识」）
+  const wsDefense = (typeof getUpgradeLevel === 'function') ? (getUpgradeLevel('defenseUp') || 0) : 0;
+  let dmg = Math.max(1, rawDmg - playerDefense - (typeof echoMod==='function'?echoMod('defenseFlat'):0) - wsDefense);
   let absorbed = 0;
   // 护盾吸收
   if (hasShield && shieldHP > 0) {
@@ -627,6 +700,28 @@ function applyDamageToPlayer(rawDmg) {
     shieldHP -= absorbed;
     dmg -= absorbed;
     if (shieldHP <= 0) { hasShield = false; shieldHP = 0; }
+  }
+  // ⚠️ 曜甲反伤：护盾实际吸收了伤害 → 按 thorns 比例反弹给攻击者（普通敌/Boss 统一，走独立结算不走 buff）
+  // v5.2 曜光协同：thornsUp 遗响 + light 流派协同提高反伤率
+  if (absorbed > 0 && playerArmor && playerArmor.thorns) {
+    const thornsRate = playerArmor.thorns
+      + (typeof echoMod === 'function' ? (echoMod('thornsUp') || 0) : 0)
+      + (typeof schoolMod === 'function' ? (schoolMod('thornsUp', 'light') || 0) : 0)
+      // v5.2 曜甲觉醒：反伤50%→80%
+      + ((playerArmor.awaken && playerArmor.awaken.thornsUp && isAwakened(playerArmor.id)) ? playerArmor.awaken.thornsUp : 0);
+    const reflect = Math.max(1, Math.round(absorbed * thornsRate));
+    if (typeof bossActive !== 'undefined' && bossActive && typeof damageBoss === 'function') {
+      damageBoss(reflect, 1);
+    } else if (typeof enemyList !== 'undefined') {
+      const atk = getMainEnemy();
+      if (atk && atk.alive) {
+        atk.hp = Math.max(0, atk.hp - reflect);
+        particles.push(new DamageText(atk.entity.x, atk.entity.y - 8, `-${reflect}`, '#ffaa55'));
+        for (let i = 0; i < 5; i++) particles.push(new HitParticle(atk.entity.x, atk.entity.y, '#ffaa55', '芒'));
+        if (atk.hp <= 0) { atk.alive = false; if (atk.elite) runEliteKills++; else runKills++; }
+        syncEnemyCompat();
+      }
+    }
   }
   playerHP -= dmg;
   if (playerHP < 0) playerHP = 0;
@@ -664,9 +759,10 @@ function enemyAttack(enemy) {
   if (!enemy || !enemy.alive) enemy = getMainEnemy();
   if (!enemy) return;
 
-  // 闪避判定（独立于防御/护盾，完全避开；含遗响·闪避加成）
+  // 闪避判定（独立于防御/护盾，完全避开；含遗响·闪避加成；v5.2 流光觉醒闪避20%→30%）
   const baseDodge=(playerArmor&&playerArmor.dodgeChance)?playerArmor.dodgeChance:0;
-  const dodgeTotal=baseDodge+(typeof echoMod==='function'?echoMod('dodgeChance'):0);
+  const dodgeTotal=baseDodge+(typeof echoMod==='function'?echoMod('dodgeChance'):0)
+    + ((playerArmor && playerArmor.awaken && playerArmor.awaken.dodgeUp && isAwakened(playerArmor.id)) ? playerArmor.awaken.dodgeUp : 0);
   if(dodgeTotal>0&&Math.random()<dodgeTotal){
     Sound.shieldBlock();
     particles.push(new DamageText(W*0.5,H*0.65,'闪避!','#88ccff'));
@@ -725,8 +821,9 @@ function updateEnemyTimers(dt) {
 /** 近战攻击：直接对玩家造成伤害（bash/shield/split 类型；enemy 参数供编队兼容） */
 function enemyAttackMelee(enemy) {
   const diff=DIFFICULTY[difficulty];
-  const dmgMult=(typeof currentDiveRoom!=='undefined'&&currentDiveRoom&&currentDiveRoom.enemyDmgMult)?currentDiveRoom.enemyDmgMult:1;
-  let rawDmg=Math.round((diff.enemyDmg[0]+Math.floor(Math.random()*(diff.enemyDmg[1]-diff.enemyDmg[0])))*dmgMult);
+  // v5.1 威胁修复：优先读 buildCombatStats 写回的修正伤害（含房间倍率×威胁×遗响 enemyDmgUp），非战斗房兜底原公式
+  const dmgSrc=(typeof currentDiveRoom!=='undefined'&&currentDiveRoom&&currentDiveRoom.enemyDmg)?currentDiveRoom.enemyDmg:diff.enemyDmg;
+  let rawDmg=Math.round(dmgSrc[0]+Math.floor(Math.random()*(dmgSrc[1]-dmgSrc[0])));
   // ⚠️ 近战（非弹幕：bash/shield/split）整体削弱 30%
   rawDmg = Math.max(1, Math.round(rawDmg * 0.7));
   // 分裂残响：逐轮递减（第N轮伤害 × 0.5^(N-1)，第一轮不折）
@@ -772,8 +869,9 @@ function enemyLaunchProjectiles(enemy) {
   const cx = ent ? ent.x : W*0.5;
   const cy = ent ? ent.y : H*0.26;
   const diff = DIFFICULTY[difficulty];
-  const dmgMult=(typeof currentDiveRoom!=='undefined'&&currentDiveRoom&&currentDiveRoom.enemyDmgMult)?currentDiveRoom.enemyDmgMult:1;
-  const dmg = Math.round((diff.enemyDmg[0] + Math.floor(Math.random()*(diff.enemyDmg[1]-diff.enemyDmg[0]))) * dmgMult);
+  // v5.1 威胁修复：优先读 buildCombatStats 写回的修正伤害，非战斗房兜底原公式
+  const dmgSrc=(typeof currentDiveRoom!=='undefined'&&currentDiveRoom&&currentDiveRoom.enemyDmg)?currentDiveRoom.enemyDmg:diff.enemyDmg;
+  const dmg = Math.round(dmgSrc[0] + Math.floor(Math.random()*(dmgSrc[1]-dmgSrc[0])));
   const type = enemy ? enemy.type : currentEnemyType;
   let projs = [];
   if (type === 'volley') {
@@ -881,7 +979,9 @@ function balanceWords() {
   const aliveCount = (typeof enemyList !== 'undefined') ? enemyList.filter(e => e.alive).length : 0;
   const atkCount = Math.max(1, ((typeof playerWeapon!=='undefined' && playerWeapon && playerWeapon.wordCount) ? playerWeapon.wordCount : 5)
     + (typeof echoMod==='function'?echoMod('wordCount'):0)
-    + Math.floor(aliveCount / 2));
+    + Math.floor(aliveCount / 2)
+    // v5.2 觉醒：攻字上限加成（追风）
+    + ((typeof playerWeapon!=='undefined' && playerWeapon && playerWeapon.awaken && playerWeapon.awaken.wordCountUp && isAwakened(playerWeapon.id)) ? playerWeapon.awaken.wordCountUp : 0));
   const defCount = (typeof playerArmor!=='undefined' && playerArmor && playerArmor.wordCount) ? playerArmor.wordCount : 2;
   const talismanCount = (typeof playerTalisman!=='undefined' && playerTalisman && playerTalisman.wordCount) ? playerTalisman.wordCount : 0;
   const targets={攻:atkCount,防:defCount,符:talismanCount};
@@ -897,8 +997,12 @@ function balanceWords() {
   for(const cat of ['攻','防','符']){
     const cfg=getCatConfig(cat);
     if(!cfg) continue;
+    // v5.3 执·夺字：被锁链攥走的攻字不可生成（挣脱后恢复）
+    let _pool = cfg.words;
+    const _steal = (typeof bossState !== 'undefined' && bossState && bossState._gripChain) ? bossState._gripChain.stealChar : null;
+    if (cat === '攻' && _steal) _pool = cfg.words.filter(w => w !== _steal);
     while(current[cat]<targets[cat] && addedThisCall < maxPerCall){
-      const text=cfg.words[Math.floor(Math.random()*cfg.words.length)];
+      const text=_pool.length ? _pool[Math.floor(Math.random()*_pool.length)] : cfg.words[Math.floor(Math.random()*cfg.words.length)];
       const bw=new BattleWord(cat,text);
       bw.vx*=diff.speed;bw.vy*=diff.speed;bw.wobbleAmp*=diff.speed;
       battleWords.push(bw);
@@ -936,9 +1040,10 @@ function balanceWords() {
   // 干扰字（增强版：随威胁等级增加数量+追踪+伪装）
   const playerCount=battleWords.filter(bw=>bw.alive&&bw.cat!=='乱').length;
   const noiseBoost = Math.min(0.16, (threatLevel || 0) * 0.02);
-  // 遗响·干扰字率修正（noiseReduce 降低 / noiseUp 提高，乘算）
+  // 遗响·干扰字率修正（noiseReduce 降低 / noiseUp 提高，乘算；v5.2 变异 noiseUp 叠加）
   const noiseMult = Math.max(0.1, (1 - (typeof echoMod==='function'?echoMod('noiseReduce'):0))
-    * (1 + (typeof echoMod==='function'?echoMod('noiseUp'):0)));
+    * (1 + (typeof echoMod==='function'?echoMod('noiseUp'):0)
+       + (typeof variantMod==='function'?variantMod('noiseUp'):0)));
   const noiseActualRate = Math.min(0.45, (diff.noiseRate + noiseBoost) * noiseMult);
   const noiseTarget=Math.min(8, Math.floor(playerCount*noiseActualRate)+1);
   const noiseCurrent=battleWords.filter(bw=>bw.alive&&bw.cat==='乱').length;
@@ -1364,10 +1469,16 @@ function handleBattleClick(bw) {
     const _comboWorkshop=(typeof getComboBonusMultiplier==='function')?getComboBonusMultiplier():1;
     const bonus=(comboBase+(typeof echoMod==='function'?echoMod('comboBoost'):0))*_comboWorkshop;
     const boostMult=nextAttackBoost?2:1;
-    const baseDmg=(playerWeapon?playerWeapon.damage:10)*getEquipMult(playerWeapon?playerWeapon.id:'')+(typeof echoMod==='function'?echoMod('atkDmgFlat'):0);
+    let baseDmg=(playerWeapon?playerWeapon.damage:10)*getEquipMult(playerWeapon?playerWeapon.id:'')+(typeof echoMod==='function'?echoMod('atkDmgFlat'):0);
+    // v5.2 觉醒：武器专属攻字伤害加成（初学者之笔/碎星之刃）
+    if (playerWeapon && playerWeapon.awaken && playerWeapon.awaken.dmgUp && isAwakened(playerWeapon.id)) {
+      baseDmg += playerWeapon.awaken.dmgUp;
+    }
     // 残响 buff：击败残影获得的全伤害加成（echoShadowBuff 定义在 rooms.js）
     const _echoShadowMult = (typeof echoShadowBuff !== 'undefined' && echoShadowBuff) ? (1 + (echoShadowBuff.atkMult || 0)) : 1;
-    let dmg=Math.floor((baseDmg+Math.random()*3)*bonus*boostMult*(1+(typeof echoMod==='function'?echoMod('atkDmg'):0))*_echoShadowMult);
+    // v5.2 荒芜变异：atkDmgUp 攻字伤害加成
+    const _atkDmgUp = (typeof variantMod==='function'?variantMod('atkDmgUp'):0);
+    let dmg=Math.floor((baseDmg+Math.random()*3)*bonus*boostMult*(1+(typeof echoMod==='function'?echoMod('atkDmg'):0)+_atkDmgUp)*_echoShadowMult);
     // 遗响·暴击
     const critCh=(typeof echoMod==='function'?echoMod('critChance'):0);
     if(critCh>0&&Math.random()<critCh){
@@ -1418,7 +1529,8 @@ function handleBattleClick(bw) {
   }
   if(bw.cat==='防'){
     const perWord = getShieldPerWord(playerArmor)
-      + (typeof echoMod==='function'?echoMod('shieldPerWord'):0);
+      + (typeof echoMod==='function'?echoMod('shieldPerWord'):0)
+      + (typeof schoolMod==='function'?(schoolMod('shieldPerWordUp','light')||0):0);
     const maxShield = getMaxShieldCap(playerArmor)
       + (typeof echoMod==='function'?echoMod('shieldMax'):0)
       + (typeof echoShadowBuff !== 'undefined' && echoShadowBuff ? (echoShadowBuff.shieldBonus || 0) : 0);
@@ -1439,9 +1551,12 @@ function handleBattleClick(bw) {
     const hMin = getTalismanHeal(t, 'min');
     const hMax = getTalismanHeal(t, 'max');
     let healAmt = hMin + Math.floor(Math.random()*(hMax - hMin + 1));
-    // 遗响·回复加成（healMult 可负，clamp 防负回复）
+    // 遗响·回复加成（healMult 可负，clamp 防负回复）；v5.2 荒芜变异 healDown 降低回复
     if(typeof echoMod==='function'){
       healAmt = Math.floor(healAmt * Math.max(0.1, 1 + echoMod('healMult')) + echoMod('healFlat'));
+    }
+    if (typeof variantMod === 'function' && variantMod('healDown')) {
+      healAmt = Math.floor(healAmt * (1 - variantMod('healDown')));
     }
     playerHP=Math.min(playerMaxHP,playerHP+healAmt);updatePlayerUI();Sound.heal();
     for(let i=0;i<8;i++) particles.push(new HitParticle(bw.x,bw.y,t.color,'+'));
@@ -1493,8 +1608,10 @@ function applyThreatModifiers(baseStats) {
   return {
     enemyHP:       Math.floor((baseStats.enemyHP || diff.enemyHP) * (1 + t * 0.06)),
     enemyDmg:      [
-      Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[0] : diff.enemyDmg[0]) * (1 + t * 0.05) * (1 + (typeof echoMod==='function'?echoMod('enemyDmgUp'):0))),
-      Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[1] : diff.enemyDmg[1]) * (1 + t * 0.05) * (1 + (typeof echoMod==='function'?echoMod('enemyDmgUp'):0)))
+      Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[0] : diff.enemyDmg[0]) * (1 + t * 0.05)
+        * (1 + (typeof echoMod==='function'?echoMod('enemyDmgUp'):0) + (typeof variantMod==='function'?variantMod('enemyDmgUp'):0))),
+      Math.floor((baseStats.enemyDmg ? baseStats.enemyDmg[1] : diff.enemyDmg[1]) * (1 + t * 0.05)
+        * (1 + (typeof echoMod==='function'?echoMod('enemyDmgUp'):0) + (typeof variantMod==='function'?variantMod('enemyDmgUp'):0)))
     ],
     enemyInterval: Math.max(2.5, (baseStats.enemyInterval || diff.enemyInterval) * (1 - t * 0.03)) + (typeof echoMod==='function'?echoMod('enemyIntervalUp'):0)
       + (typeof schoolMod==='function'?schoolMod('enemyIntervalUp','frost'):0),

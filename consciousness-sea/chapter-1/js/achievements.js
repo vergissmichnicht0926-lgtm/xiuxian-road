@@ -31,6 +31,27 @@ const ACHIEVEMENT_DEFS = {
     id:'ach_regretful', name:'遗憾的安息', icon:'悔', iconColor:'#cc3322', source:'击败「遗憾」',
     desc:'心为追忆，贵为珍宝。最深处的遗憾，终于可以安静地睡去。',
   },
+  // v5.2 收集/成长成就
+  ach_clear_1: {
+    id:'ach_clear_1', name:'首次潜航完成', icon:'航', iconColor:'#88ccff', source:'完成一次潜航',
+    desc:'从浅海到深渊，完整地走完了一程。锚点把你安全送回。',
+  },
+  ach_clear_10: {
+    id:'ach_clear_10', name:'十度深潜', icon:'潜', iconColor:'#66ddcc', source:'完成十次潜航',
+    desc:'十次往返于意识之海。深海的暗流，你已经摸得清脾性。',
+  },
+  ach_equip_all: {
+    id:'ach_equip_all', name:'词元全收藏', icon:'藏', iconColor:'#ffcc88', source:'图鉴收齐全部装备',
+    desc:'武器、防具、护符……所有前人留下的词元，都曾在你手中醒来。',
+  },
+  ach_relic_all: {
+    id:'ach_relic_all', name:'记忆集大成', icon:'忆', iconColor:'#c9a2ff', source:'图鉴收齐全部遗响',
+    desc:'二十八段记忆碎片，重新拼成了完整的你。',
+  },
+  ach_awaken_1: {
+    id:'ach_awaken_1', name:'觉醒', icon:'醒', iconColor:'#ffdd88', source:'任意装备精通圆满',
+    desc:'有一件装备，与你共鸣到了极致——它不再是一件武器，而是你的一部分。',
+  },
 };
 
 /** 解锁成就：写状态 + 存档 + toast 提示（幂等） */
@@ -45,6 +66,41 @@ function unlockAchievement(id) {
     t.classList.add('show');
     clearTimeout(t._timeout);
     t._timeout = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+  if (typeof Sound !== 'undefined' && Sound.boost) Sound.boost();
+}
+
+// v5.2 收集类成就检查（图鉴跨局数据 + 装备熟练度；showRunSummary 结算时调用）
+function checkCollectionAchievements() {
+  if (typeof unlockAchievement !== 'function') return;
+  // 装备全收集：图鉴 equipment 覆盖 BESTIARY_EQUIP_DEFS 全部
+  if (typeof BESTIARY_EQUIP_DEFS !== 'undefined' && typeof bestiaryData !== 'undefined') {
+    const equipAll = Object.keys(BESTIARY_EQUIP_DEFS).every(k => bestiaryData.equipment[k] && bestiaryData.equipment[k].discovered);
+    if (equipAll) unlockAchievement('ach_equip_all');
+  }
+  // 首次觉醒：任意装备熟练度 ≥ AWAKEN_THRESHOLD
+  if (typeof equipProficiency !== 'undefined' && typeof EQUIP_UNLOCK !== 'undefined') {
+    const awkThr = EQUIP_UNLOCK.AWAKEN_THRESHOLD || 10;
+    if (Object.keys(equipProficiency).some(k => (equipProficiency[k] || 0) >= awkThr)) {
+      unlockAchievement('ach_awaken_1');
+    }
+  }
+}
+
+// v5.2 遗响集齐奖励：+50 灵魂结晶（成就 ach_relic_all 做一次性标记）
+function checkRelicAllReward() {
+  if (typeof BESTIARY_RELIC_DEFS === 'undefined' || typeof bestiaryData === 'undefined') return;
+  const all = Object.keys(BESTIARY_RELIC_DEFS).every(k => bestiaryData.relics[k] && bestiaryData.relics[k].discovered);
+  if (!all) return;
+  if (typeof achievements !== 'undefined' && achievements['ach_relic_all'] && achievements['ach_relic_all'].unlocked) return;
+  if (typeof soulCrystals !== 'undefined') soulCrystals += 50;
+  if (typeof unlockAchievement === 'function') unlockAchievement('ach_relic_all');
+  const t = document.getElementById('save-toast');
+  if (t) {
+    t.textContent = '遗响集齐 · 奖励 ◆50';
+    t.classList.add('show');
+    clearTimeout(t._timeout);
+    t._timeout = setTimeout(() => t.classList.remove('show'), 2500);
   }
   if (typeof Sound !== 'undefined' && Sound.boost) Sound.boost();
 }

@@ -78,6 +78,16 @@ const ECHO_DEFS = {
     desc:'什么都想要的人，连噪点都想装进行囊。' },
   awaken_echo:  { name:'觉醒之忆', rarity:'epic', icon:'醒', effects:{ wordCount:2, atkDmg:0.10, healMult:0.20, hpCost:15 },
     desc:'醒来的那一刻很疼，但眼前全是字。' },
+
+  // ── v5.2 曜光/蚀毒 流派遗响 ──
+  mirror_veil: { name:'镜返之忆', rarity:'rare', icon:'镜', school:'light', effects:{ thornsUp:0.3 },
+    desc:'光在镜面折返——敌人被自己的攻击灼伤，护盾反伤增强。' },
+  glare_echo:  { name:'辉光之忆', rarity:'common', icon:'辉', school:'light', effects:{ shieldPerWord:2 },
+    desc:'记忆里的辉光凝成盾——每枚防字多2点护盾。' },
+  venom_echo:  { name:'蛇信之忆', rarity:'rare', icon:'蛇', school:'poison', effects:{ poisonSpeedUp:1 },
+    desc:'毒蛇的信子快过眼睛——叠毒每击+1层。' },
+  rot_echo:    { name:'蚀骨之忆', rarity:'common', icon:'蚀', school:'poison', effects:{ poisonBurstUp:10 },
+    desc:'溃烂的记忆加深毒性——毒爆伤害+10。' },
 };
 
 // 效果 key → 中文（用于卡片/背包展示）。value 为数值。
@@ -100,6 +110,9 @@ const ECHO_EFFECT_FMT = {
   shopDiscount:   v => `商店价格 -${Math.round(v*100)}%`,
   blazeBonus:     v => `「炎」槽累积 +${v}`,
   slowBonus:      v => `「霜」减速 +${v}s`,
+  thornsUp:       v => `护盾反伤 +${v}`,
+  poisonSpeedUp:  v => `叠毒每击 +${v} 层`,
+  poisonBurstUp:  v => `毒爆伤害 +${v}`,
   enemyIntervalUp:v => `敌人攻击间隔 +${v}s`,
   enemyDmgUp:     v => `敌人伤害 +${Math.round(v*100)}%`,
   hpMaxCost:      v => `最大意识上限 -${v}`,
@@ -217,6 +230,18 @@ function clearEchoes() {
   echoRollsSinceEpic = 0;
 }
 
+// ═══════════════ 肉鸽变异（v5.2）═══════════════
+// 开局三选一，作用于整局。效果经 variantMod(key) 读取（仿 echoMod），无变异返回 0。
+let runVariant = null;   // 当前局选中的变异 id
+
+function clearRunVariant() { runVariant = null; }
+
+function variantMod(key) {
+  if (!runVariant || typeof VARIANT_DEFS === 'undefined' || !VARIANT_DEFS[runVariant]) return 0;
+  const eff = VARIANT_DEFS[runVariant].effects;
+  return (eff && eff[key] != null) ? eff[key] : 0;
+}
+
 /** 获取遗响稀有度配置 */
 function getEchoRarity(key) {
   const d = ECHO_DEFS[key];
@@ -239,6 +264,10 @@ function rollEchoRarity(bias) {
 /** 三选一 roll n 张（不重复；连续 5 次无史诗则保底一张史诗；池空允许重复兜底） */
 function rollEchoOptions(n, bias) {
   n = n || 3; bias = bias || 0;
+  // v5.2 记忆磨损变异：三选一只给两张
+  if (typeof variantMod === 'function' && variantMod('echoCardsDown')) {
+    n = Math.max(2, n - variantMod('echoCardsDown'));
+  }
   const allKeys = Object.keys(ECHO_DEFS);
   const pool = allKeys.filter(k => !echoInventory.includes(k) && !echoChoicesUsed.includes(k));
   const src = pool.length >= n ? pool : allKeys;

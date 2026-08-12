@@ -39,6 +39,11 @@ const INJECT = `
         const _ov = document.getElementById('defeat-overlay');
         if (_ov && _ov.classList.contains('show') && typeof enterHub === 'function') { enterHub(); return; }
       } catch(e) {}
+      // === v5.2 变异三选一（最优先，防开局卡在变异选择）===
+      if (typeof variantChoiceActive !== 'undefined' && variantChoiceActive
+          && typeof VARIANT_DEFS !== 'undefined' && typeof chooseVariant === 'function') {
+        chooseVariant(Object.keys(VARIANT_DEFS)[0]); return;
+      }
       // === 遗响三选一（最优先，防 Boss 三选一卡死）===
       if (typeof echoChoiceActive !== 'undefined' && echoChoiceActive
           && typeof echoChoiceOptions !== 'undefined' && echoChoiceOptions.length

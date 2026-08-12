@@ -14,7 +14,9 @@ let shards = 0;
 
 /** 给予局内碎片（带粒子效果和音效）。遗响 shardMult（漂流/贪婪）在此统一放大 */
 function grantShards(amount, x, y) {
-  const mult = 1 + (typeof echoMod === 'function' ? (echoMod('shardMult') || 0) : 0);
+  // v5.2 裂隙变异 shardMult：与遗响 shardMult 叠加
+  const mult = 1 + (typeof echoMod === 'function' ? (echoMod('shardMult') || 0) : 0)
+    + (typeof variantMod === 'function' ? (variantMod('shardMult') || 0) : 0);
   if (mult !== 1) amount = Math.floor(amount * mult);
   shards += amount;
   updateShardsDisplay();
@@ -45,7 +47,8 @@ function updateShardsDisplay() {
 let shopOpen = false;
 let shopItems = [];           // 商品对象数组
 let shopHovered = null;       // 悬停商品
-let shopSelected = null;      // 已选中待确认
+let shopDetail = null;        // v5.3 详情查看中的商品（列表→详情二级结构）
+let shopDetailHover = null;   // 详情面板按钮悬停 'buy'|'cancel'|null
 let shopFeedback = null;      // { text, color, timer }
 let shopJustOpened = false;   // 刚打开商店，防止立即误触
 
@@ -65,7 +68,7 @@ function openShop() {
   }
   shopOpen = true;
   shopJustOpened = true;
-  shopSelected = null;
+  shopDetail = null;
   shopFeedback = null;
   initShopItems();
   if (typeof Sound !== 'undefined') Sound.uiOpen();
@@ -78,7 +81,8 @@ function closeShop() {
   shopOpen = false;
   shopItems = [];
   shopHovered = null;
-  shopSelected = null;
+  shopDetail = null;
+  shopDetailHover = null;
   shopFeedback = null;
   if (typeof Sound !== 'undefined') Sound.uiClose();
 }
@@ -216,11 +220,11 @@ function updateShopItems() {
     item.alpha += (item.targetAlpha - item.alpha) * 0.1;
     item.phase += 0.012;
     // 选中后的微浮动
-    const floatY = (item === shopSelected) ? Math.sin(item.phase) * 4 : Math.sin(item.phase * 0.7) * 2;
+    const floatY = (item === shopDetail) ? Math.sin(item.phase) * 4 : Math.sin(item.phase * 0.7) * 2;
     item.x += (item.baseX - item.x) * 0.08;
     item.y += (item.baseY + floatY - item.y) * 0.08;
     // 选中发光脉动
-    item._hasGlow = (item === shopSelected);
+    item._hasGlow = (item === shopDetail);
   });
 }
 
@@ -280,7 +284,7 @@ function drawShop(ctx) {
   shopItems.forEach(item => {
     if (item.alpha < 0.03) return;
     const isHovered = item.hovered;
-    const isSelected = (item === shopSelected);
+    const isSelected = false; // v5.3 详情面板独立于卡片，卡片不再常驻选中态
     const sz = isHovered ? 1.05 : 1;
     const glowPulse = isSelected ? (0.6 + 0.4 * Math.sin(now * 0.004)) : 1;
 
@@ -319,34 +323,29 @@ function drawShop(ctx) {
     ctx.textAlign = 'left';
     ctx.fillText(typeLabel, cx - cw/2 + 10, cy - ch/2 + 14);
 
-    // 商品名
+    // 商品名（v5.3 列表只显示名称，描述移入详情面板）
     const itemColor = getItemColor(item);
     ctx.fillStyle = itemColor;
-    ctx.font = `${isHovered ? 18 : 16}px "Noto Serif SC","SimSun",serif`;
+    ctx.font = `${isHovered ? 19 : 17}px "Noto Serif SC","SimSun",serif`;
     ctx.textAlign = 'center';
     ctx.fillText(item.name || item.data.name, cx, cy - 2);
-
-    // 描述（下小字）
-    ctx.fillStyle = 'rgba(180,190,210,0.45)';
-    ctx.font = '10px "Noto Serif SC","SimSun",serif';
-    ctx.fillText(item.desc || (item.data && item.data.desc) || '', cx, cy + 16);
 
     // 价格（含遗响折扣）
     const price = (typeof getShopPrice === 'function') ? getShopPrice(item) : item.cost;
     const canAfford = shards >= price;
-    const priceColor = isSelected ? '#ffdd88' : (canAfford ? 'rgba(255,220,150,0.7)' : 'rgba(255,100,80,0.7)');
+    const priceColor = isHovered ? '#ffdd88' : (canAfford ? 'rgba(255,220,150,0.7)' : 'rgba(255,100,80,0.7)');
     ctx.fillStyle = priceColor;
     ctx.font = '13px "Noto Serif SC","SimSun",serif';
     ctx.textAlign = 'right';
     ctx.fillText(`◇ ${price}`, cx + cw/2 - 10, cy - ch/2 + 14);
 
-    // 选中提示
-    if (isSelected) {
+    // 悬停提示：点击查看详情
+    if (isHovered && !isSelected) {
       const hintAlpha = 0.5 + 0.35 * Math.sin(now * 0.003);
       ctx.fillStyle = `rgba(255,220,150,${hintAlpha})`;
       ctx.font = '11px "Noto Serif SC","SimSun",serif';
       ctx.textAlign = 'center';
-      ctx.fillText('再次点击确认购买', cx, cy + ch/2 + 16);
+      ctx.fillText('点击查看详情', cx, cy + ch/2 + 15);
     }
 
     ctx.restore();
@@ -364,12 +363,179 @@ function drawShop(ctx) {
     ctx.restore();
   }
 
+  // 详情面板（列表之上）
+  if (shopDetail) drawShopDetail(ctx, shopDetail);
+
   // 底部提示
   const pulse = 0.25 + 0.2 * Math.sin(now * 0.002);
   ctx.fillStyle = `rgba(180,190,210,${pulse})`;
   ctx.font = '11px "Noto Serif SC","SimSun",serif';
   ctx.textAlign = 'center';
-  ctx.fillText('点击商品购买 · 点击空白离开 · ESC关闭', Ww * 0.5, Hh * 0.92);
+  const hintText = shopDetail
+    ? '点击「购买」购入 · 点击面板外或「返回」返回列表 · ESC返回'
+    : '点击商品查看详情 · 点击空白离开 · ESC关闭';
+  ctx.fillText(hintText, Ww * 0.5, Hh * 0.92);
+
+  ctx.restore();
+}
+
+// ═══════════════ v5.3 商店详情面板 ═══════════════
+
+/** 详情面板几何（居中） */
+function getShopDetailRect() {
+  const Ww = typeof W !== 'undefined' ? W : 1200;
+  const Hh = typeof H !== 'undefined' ? H : 800;
+  const w = Math.min(460, Ww * 0.82);
+  const h = Math.min(330, Hh * 0.52);
+  return { x: Ww * 0.5, y: Hh * 0.42, w, h };
+}
+
+/** 详情面板按钮几何 */
+function getShopDetailButtons() {
+  const r = getShopDetailRect();
+  const bw = 112, bh = 40, gap = 26;
+  const total = bw * 2 + gap;
+  const cy = r.y + r.h * 0.5 - 24;
+  return {
+    buy:    { x: r.x - total/2 + bw/2, y: cy, w: bw, h: bh },
+    cancel: { x: r.x - total/2 + bw + gap + bw/2, y: cy, w: bw, h: bh },
+  };
+}
+
+/** 中文字符逐字换行 */
+function wrapCtxText(ctx, text, maxWidth) {
+  if (!text) return [];
+  const lines = [];
+  let cur = '';
+  for (const ch of String(text)) {
+    if (cur && ctx.measureText(cur + ch).width > maxWidth) {
+      lines.push(cur); cur = ch;
+    } else cur += ch;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** 详情面板统计行 */
+function getShopDetailStats(item) {
+  const d = item.data || {};
+  const parts = [];
+  if (item.type === 'weapon') {
+    if (d.wordCount) parts.push(`攻字 ${d.wordCount} 枚`);
+    if (d.damage) parts.push(`伤害 ${d.damage}`);
+    if (d.targetMode === 'aoe') parts.push('AOE');
+    if (d.pierce) parts.push('贯穿');
+    if (d.slow) parts.push('减速');
+    if (d.leech) parts.push(`吸血 ${Math.round(d.leech * 100)}%`);
+  } else if (item.type === 'armor') {
+    if (d.defense) parts.push(`减伤 ${d.defense}`);
+    if (d.shieldPerWord) parts.push(`每字盾 ${d.shieldPerWord}`);
+    if (d.maxShield) parts.push(`盾上限 ${d.maxShield}`);
+  }
+  return parts.join(' · ');
+}
+
+/** 绘制详情面板按钮 */
+function drawShopDetailBtn(ctx, b, label, enabled, hovered) {
+  ctx.save();
+  ctx.globalAlpha = enabled ? 1 : 0.4;
+  ctx.fillStyle = (enabled && hovered) ? 'rgba(255,220,170,0.15)' : 'rgba(255,220,170,0.06)';
+  roundRect(ctx, b.x - b.w/2, b.y - b.h/2, b.w, b.h, 6);
+  ctx.fill();
+  ctx.strokeStyle = (enabled && hovered) ? 'rgba(255,220,160,0.75)' : 'rgba(255,200,140,0.35)';
+  ctx.lineWidth = hovered ? 1.5 : 1;
+  roundRect(ctx, b.x - b.w/2, b.y - b.h/2, b.w, b.h, 6);
+  ctx.stroke();
+  ctx.fillStyle = enabled ? (hovered ? '#ffe8c8' : 'rgba(255,225,185,0.9)') : 'rgba(255,255,255,0.3)';
+  ctx.font = '15px "Noto Serif SC","SimSun",serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, b.x, b.y);
+  ctx.restore();
+}
+
+/** 绘制商店详情面板（大字描述 + 购买/返回） */
+function drawShopDetail(ctx, item) {
+  const Ww = typeof W !== 'undefined' ? W : 1200;
+  const Hh = typeof H !== 'undefined' ? H : 800;
+  const now = performance.now();
+  const r = getShopDetailRect();
+  const btns = getShopDetailButtons();
+  const price = (typeof getShopPrice === 'function') ? getShopPrice(item) : item.cost;
+  const canAfford = shards >= price;
+  const itemColor = getItemColor(item);
+  const cx = r.x;
+
+  ctx.save();
+
+  // 列表压暗
+  ctx.fillStyle = 'rgba(2,2,18,0.6)';
+  ctx.fillRect(0, 0, Ww, Hh);
+
+  // 面板本体
+  ctx.shadowColor = getItemGlow(item);
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = 'rgba(12,12,32,0.97)';
+  roundRect(ctx, r.x - r.w/2, r.y - r.h/2, r.w, r.h, 12);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(255,210,150,${0.4 + 0.15 * Math.sin(now * 0.003)})`;
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, r.x - r.w/2, r.y - r.h/2, r.w, r.h, 12);
+  ctx.stroke();
+
+  let ty = r.y - r.h/2 + 36;
+  ctx.textAlign = 'center';
+
+  // 类型
+  const typeLabel = item.type === 'weapon' ? '武器' : item.type === 'armor' ? '防具' : item.type === 'skill' ? '技能' : item.type === 'talisman' ? '护符' : item.type === 'echo' ? '遗响' : '消耗品';
+  ctx.fillStyle = 'rgba(200,200,220,0.45)';
+  ctx.font = '12px "Noto Serif SC","SimSun",serif';
+  ctx.fillText(typeLabel, cx, ty);
+  ty += 28;
+
+  // 名称
+  ctx.fillStyle = itemColor;
+  ctx.font = '25px "Noto Serif SC","SimSun",serif';
+  ctx.fillText(item.name || item.data.name, cx, ty);
+  ty += 36;
+
+  // 统计行
+  const stats = getShopDetailStats(item);
+  if (stats) {
+    ctx.fillStyle = 'rgba(225,228,240,0.6)';
+    ctx.font = '14px "Noto Serif SC","SimSun",serif';
+    ctx.fillText(stats, cx, ty);
+    ty += 26;
+  }
+
+  // 分隔线
+  ctx.strokeStyle = 'rgba(255,200,140,0.16)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(r.x - r.w * 0.32, ty); ctx.lineTo(r.x + r.w * 0.32, ty); ctx.stroke();
+  ty += 14;
+
+  // 描述（换行大字）
+  const priceTop = r.y + r.h * 0.5 - 84;      // 价格预留线
+  const avail = priceTop - ty - 12;
+  const maxLines = Math.max(1, Math.min(4, Math.floor(avail / 23)));
+  const desc = item.desc || (item.data && item.data.desc) || '';
+  ctx.fillStyle = 'rgba(208,214,232,0.9)';
+  ctx.font = '14px "Noto Serif SC","SimSun",serif';
+  const lines = wrapCtxText(ctx, desc, r.w - 56);
+  for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
+    ctx.fillText(lines[i], cx, ty);
+    ty += 23;
+  }
+
+  // 价格
+  ctx.fillStyle = canAfford ? 'rgba(255,220,150,0.9)' : 'rgba(255,100,80,0.85)';
+  ctx.font = '17px "Noto Serif SC","SimSun",serif';
+  ctx.fillText(`◇ ${price}`, cx, priceTop);
+
+  // 按钮
+  drawShopDetailBtn(ctx, btns.buy, '购买', canAfford, shopDetailHover === 'buy');
+  drawShopDetailBtn(ctx, btns.cancel, '返回', true, shopDetailHover === 'cancel');
 
   ctx.restore();
 }
@@ -377,6 +543,14 @@ function drawShop(ctx) {
 /** 商店悬停检测 */
 function hitTestShop(mx, my) {
   shopHovered = null;
+  shopDetailHover = null;
+  // 详情模式：只检测面板按钮
+  if (shopDetail) {
+    const b1 = getShopDetailButtons().buy, b2 = getShopDetailButtons().cancel;
+    if (mx > b1.x - b1.w/2 && mx < b1.x + b1.w/2 && my > b1.y - b1.h/2 && my < b1.y + b1.h/2) shopDetailHover = 'buy';
+    else if (mx > b2.x - b2.w/2 && mx < b2.x + b2.w/2 && my > b2.y - b2.h/2 && my < b2.y + b2.h/2) shopDetailHover = 'cancel';
+    return;
+  }
   for (let item of shopItems) {
     item.hovered = false;
     const cw = item.cardW, ch = item.cardH;
@@ -388,34 +562,46 @@ function hitTestShop(mx, my) {
   }
 }
 
-/** 商店点击处理 */
+/** 商店点击处理（v5.3 列表→详情二级结构） */
 function handleShopClick() {
   if (shopJustOpened) return; // 防误触
 
+  // ── 详情模式：购买 / 返回 / 面板外返回列表 ──
+  if (shopDetail) {
+    const r = getShopDetailRect();
+    const btns = getShopDetailButtons();
+    const inBuy = mx > btns.buy.x - btns.buy.w/2 && mx < btns.buy.x + btns.buy.w/2 &&
+                  my > btns.buy.y - btns.buy.h/2 && my < btns.buy.y + btns.buy.h/2;
+    const inCancel = mx > btns.cancel.x - btns.cancel.w/2 && mx < btns.cancel.x + btns.cancel.w/2 &&
+                     my > btns.cancel.y - btns.cancel.h/2 && my < btns.cancel.y + btns.cancel.h/2;
+    if (inBuy) {
+      attemptPurchase(shopDetail);
+    } else if (inCancel) {
+      shopDetail = null;
+      if (typeof Sound !== 'undefined') Sound.uiClose();
+    } else if (mx < r.x - r.w/2 || mx > r.x + r.w/2 || my < r.y - r.h/2 || my > r.y + r.h/2) {
+      // 点击面板外 → 返回列表
+      shopDetail = null;
+      if (typeof Sound !== 'undefined') Sound.uiClose();
+    }
+    return;
+  }
+
+  // ── 列表模式：点击商品 → 查看详情；点击空白 → 离开商店 ──
   if (shopHovered) {
-    if (shopSelected === shopHovered) {
-      // 二次确认 → 购买
-      attemptPurchase(shopHovered);
-    } else {
-      // 首次选中
-      shopSelected = shopHovered;
-      if (typeof Sound !== 'undefined') Sound.uiClick();
-    }
+    shopDetail = shopHovered;
+    if (typeof Sound !== 'undefined') Sound.uiClick();
   } else {
-    // 点击空白
-    if (shopSelected) {
-      shopSelected = null;
-    } else {
-      // 离开商店 → 完成商店房间
-      closeShop();
-      if (typeof shopRoomDone === 'function') shopRoomDone();
-    }
+    closeShop();
+    if (typeof shopRoomDone === 'function') shopRoomDone();
   }
 }
 
 /** 遗响·商店折扣：统一取价（市集之忆等可打折） */
 function getShopPrice(item) {
-  const disc = (typeof echoMod === 'function') ? echoMod('shopDiscount') : 0;
+  // v5.2 词元枯竭变异 shopDiscount：与遗响 shopDiscount 叠加
+  const disc = (typeof echoMod === 'function' ? (echoMod('shopDiscount') || 0) : 0)
+    + (typeof variantMod === 'function' ? (variantMod('shopDiscount') || 0) : 0);
   return Math.max(1, Math.round((item.cost || 0) * (1 - disc)));
 }
 
@@ -424,7 +610,7 @@ function attemptPurchase(item) {
   const price = (typeof getShopPrice === 'function') ? getShopPrice(item) : (item.cost || 0);
   if (shards < price) {
     shopFeedback = { text: '意识碎片不足', color: '#ff6644', timer: 45 };
-    shopSelected = null;
+    // 保持详情面板打开，玩家可点「返回」退出
     if (typeof Sound !== 'undefined') Sound.stun();
     return;
   }
@@ -437,7 +623,7 @@ function attemptPurchase(item) {
     if (typeof grantEcho === 'function') grantEcho(item.key);
     shopFeedback = { text: `获得了遗响 · ${item.data.name}`, color: '#ffb648', timer: 80 };
     shopItems = shopItems.filter(si => si !== item);
-    shopSelected = null;
+    shopDetail = null;
   } else if (item.type === 'consumable') {
     // ── 消耗品 ──
     if (item.effect === 'heal') {
@@ -446,6 +632,7 @@ function attemptPurchase(item) {
         if (typeof updatePlayerUI === 'function') updatePlayerUI();
       }
       shopFeedback = { text: `回复了 ${item.value || 40} 点意识完整度`, color: '#44dd88', timer: 60 };
+      shopDetail = null; // 购买成功 → 返回列表
       if (typeof Sound !== 'undefined') Sound.heal();
     } else if (item.effect === 'gamble') {
       // 意识共鸣：对当前武器铭刻/重铸额外效果（WEAPON_BUFFS buff）
@@ -465,8 +652,10 @@ function attemptPurchase(item) {
         weaponBuffs[wid] = newBuff;
         if (typeof saveGame === 'function') saveGame();
         shopFeedback = { text: hasExtra ? `重铸效果 · ${WEAPON_BUFFS[newBuff].name}` : `铭刻效果 · ${WEAPON_BUFFS[newBuff].name}`, color: '#ffdd88', timer: 80 };
+        shopDetail = null; // 购买成功 → 返回列表
         if (typeof Sound !== 'undefined') Sound.boost();
       } else {
+        // 无武器：退款，保持详情面板打开
         shopFeedback = { text: '尚未装备武器', color: '#888888', timer: 45 };
         shards += item.cost; // 退款
         updateShardsDisplay();
@@ -474,14 +663,13 @@ function attemptPurchase(item) {
       }
     }
     // 消耗品不消失，可重复购买
-    shopSelected = null;
   } else {
     // ── 装备 ──
     equipItem(item.type, item.key, item.data);
     shopFeedback = { text: `购买了 ${item.data.name}`, color: '#ffdd88', timer: 80 };
     // 装备商品从列表中移除
     shopItems = shopItems.filter(si => si !== item);
-    shopSelected = null;
+    shopDetail = null;
   }
 
   // 粒子效果

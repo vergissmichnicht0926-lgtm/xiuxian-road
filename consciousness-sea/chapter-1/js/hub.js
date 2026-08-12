@@ -205,6 +205,12 @@ function openXiaoyingMenu() {
       color: energyDone ? '#88ffcc' : '#aaddff', glow: '#55aacc', hovered: false,
     });
   }
+  // v5.2 设置：游戏内调整音量/难度/帮助（始终可点，放菜单最底部，y 按现有项数动态排）
+  hubMenuItems.push({
+    id: 'settings', label: '设置', desc: '音量 / 难度 / 帮助',
+    x: cx, y: cy + hubMenuItems.length * 40, baseX: cx, baseY: cy + hubMenuItems.length * 40,
+    alpha: 0, targetAlpha: 0.9, color: '#99ccdd', glow: '#4488aa', hovered: false,
+  });
 }
 
 function closeXiaoyingMenu() {
@@ -632,6 +638,11 @@ function handleHubClick(cx, cy) {
         closeXiaoyingMenu();
         if (typeof returnZeroEnergy === 'function') returnZeroEnergy();
         return;
+      } else if (hubMenuHovered.id === 'settings') {
+        // v5.2 设置：游戏内调音量/难度/帮助
+        closeXiaoyingMenu();
+        if (typeof openSettings === 'function') openSettings();
+        return;
       }
     } else {
       // 点击空白关闭菜单
@@ -837,6 +848,8 @@ function startRoguelikeDive() {
 
   // 重置遗响（每局潜航的局内构筑清空）
   if (typeof clearEchoes === 'function') clearEchoes();
+  // v5.2 重置变异（每局开局重新三选一）
+  if (typeof clearRunVariant === 'function') clearRunVariant();
 
   // 重置局内装备状态（融合等级 equipmentLevels / buff weaponBuffs / 熟练度 equipProficiency 跨局保留）
   if (typeof resetRunEquipmentState === 'function') resetRunEquipmentState(); // 局内防具/护符解锁集合清空
@@ -857,9 +870,11 @@ function startRoguelikeDive() {
   if (typeof skillState !== 'undefined') skillState = { collected: [], chargeLevel: 0, ready: false };
   if (typeof updateSkillUI === 'function') updateSkillUI();
 
-  // 重置基础HP，然后应用永久升级（会在此基础上叠加HP加成）
+  // 重置基础HP与护盾，然后应用永久升级（会在此基础上叠加HP加成 / 工坊「初始护盾」）
   if (typeof playerMaxHP !== 'undefined') playerMaxHP = 100;
   if (typeof playerHP !== 'undefined') playerHP = 100;
+  if (typeof hasShield !== 'undefined') hasShield = false;
+  if (typeof shieldHP !== 'undefined') shieldHP = 0;
   if (typeof applyPermanentUpgrades === 'function') applyPermanentUpgrades();
   if (typeof updatePlayerUI === 'function') updatePlayerUI();
 
@@ -917,6 +932,12 @@ function doDiveDepart() {
       generateRoguelikeMap();
     } else if (typeof initMap === 'function') {
       initMap();
+    }
+    // v5.2 肉鸽变异：开局三选一（地图生成后弹覆盖层，选完继续；eliteForce 会重建地图）
+    // v5.3 未通关第一章（totalClears<1）不弹变异，首周目纯体验主线
+    if (typeof openVariantChoice === 'function' && typeof isRoguelikeMap !== 'undefined' && isRoguelikeMap
+        && (typeof ch1Cleared === 'function' && ch1Cleared())) {
+      openVariantChoice();
     }
     // 设置游戏阶段：潜航中
     if (typeof setGameToDiving === 'function') setGameToDiving();

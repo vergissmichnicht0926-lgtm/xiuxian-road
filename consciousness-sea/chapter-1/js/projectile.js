@@ -17,7 +17,7 @@ class Projectile {
     this.color = color || '#ff6644';
     this.glow = '#cc3311';
     this.damage = damage || 5;
-    this.size = size || (18 + Math.random() * 10);
+    this.size = (size || (18 + Math.random() * 10)) * 0.67; // v5.3 子弹大小削减约1/3
     this.alive = true;
     this.alpha = 0.9;
     this.phase = Math.random() * Math.PI * 2;

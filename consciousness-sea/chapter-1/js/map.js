@@ -113,6 +113,15 @@ function generateRoguelikeMap() {
           } else if (t === 'shop') {
             rooms.push({ id: genId('shop'), type: 'shop', label: '市', layer, isShop: true, branch,
               desc: '意识共鸣点。用碎片换取装备与补给。' });
+          } else if (t === 'elite') {
+            // v5.1 精英房：type 沿用 'combat' 完全复用战斗管线，elite:true 标记区分奖励/渲染
+            // v5.3 未通关第一章（totalClears<1）不生成精英，首周目纯体验主线
+            if (typeof ch1Cleared === 'function' && !ch1Cleared()) { return; }
+            const el = pickOne('elite');
+            if (el) { el.id = genId('elite'); el.layer = layer; el.branch = branch; rooms.push(el); }
+            else { rooms.push({ id: genId('elite'), type: 'combat', elite: true, label: '精英·残响卫', layer, branch,
+              waves: 2, count: 1, enemyType: 'track', enemyHP: 95, enemyInterval: 3.0, enemyDmgMult: 2.0, hardMode: true,
+              desc: '深海的精英残响。' }); }
           }
         });
         nextLayer++;
@@ -132,6 +141,16 @@ function generateRoguelikeMap() {
         nextLayer++;
       }
     });
+
+    // v5.2 精英入侵变异：每段额外插入一个必走精英房（段末 Boss 前）
+    // v5.3 未通关第一章（totalClears<1）精英入侵不生效（且变异三选一本身也已隐藏）
+    if ((typeof ch1Cleared === 'function' && ch1Cleared())
+        && typeof variantMod === 'function' && variantMod('eliteForce')
+        && typeof ROGUELIKE_ROOM_POOL !== 'undefined' && ROGUELIKE_ROOM_POOL.elite && ROGUELIKE_ROOM_POOL.elite.length) {
+      const el2 = { ...ROGUELIKE_ROOM_POOL.elite[Math.floor(Math.random() * ROGUELIKE_ROOM_POOL.elite.length)] };
+      el2.id = genId('elite'); el2.layer = nextLayer;
+      rooms.push(el2); nextLayer++;
+    }
 
     // 段末 Boss
     let bossKey = seg.bossKey, bossLabel = seg.bossLabel, bossDesc = seg.bossDesc || '深海的守护者。';
@@ -577,20 +596,23 @@ function drawMap(ctx) {
     let nodeColor, glowColor, nodeAlpha;
 
     const isShopNode = room.type === 'shop';
+    const isEliteNode = !!room.elite;   // v5.1 精英房：深红暖色系区别于普通战斗
 
     if (state && state.completed) {
       nodeColor = '#8899bb'; glowColor = 'rgba(120,150,200,0.3)'; nodeAlpha = 0.55;
     } else if (isHovered) {
-      nodeColor = isShopNode ? '#ffdd88' : '#ffcc88';
-      glowColor = isShopNode ? 'rgba(255,200,120,0.7)' : 'rgba(255,180,100,0.7)';
+      nodeColor = isEliteNode ? '#ff9a66' : (isShopNode ? '#ffdd88' : '#ffcc88');
+      glowColor = isEliteNode ? 'rgba(255,130,90,0.8)' : (isShopNode ? 'rgba(255,200,120,0.7)' : 'rgba(255,180,100,0.7)');
       nodeAlpha = 1;
     } else if (state && state.unlocked) {
       const pulse = 0.7 + 0.3 * Math.sin(now * 0.003);
-      nodeColor = isShopNode ? '#e8c888' : '#c8ddf8';
-      glowColor = isShopNode
-        ? `rgba(220,180,100,${0.4 * pulse})`
-        : `rgba(150,200,255,${0.4 * pulse})`;
-      nodeAlpha = 0.8 * pulse;
+      nodeColor = isEliteNode ? '#e89070' : (isShopNode ? '#e8c888' : '#c8ddf8');
+      glowColor = isEliteNode
+        ? `rgba(255,110,70,${0.5 * pulse})`
+        : isShopNode
+          ? `rgba(220,180,100,${0.4 * pulse})`
+          : `rgba(150,200,255,${0.4 * pulse})`;
+      nodeAlpha = 0.9 * pulse;
     } else return;
 
     ctx.save();
